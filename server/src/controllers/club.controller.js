@@ -62,112 +62,125 @@ exports.assignLeader = async (req, res) => {
 };
 
 // Student requests to join club
-exports.requestJoinClub = async (req, res) => {
+exports.requestJoin = async (req, res) => {
   try {
     const studentId = req.user.id; // from protect middleware
     const clubId = req.params.clubId;
 
-    // Check if already member
     const club = await Club.findById(clubId);
-    if (!club) return res.status(404).json({ message: "Club not found" });
+    if (!club) return res.status(404).json({ message: 'Club not found' });
 
+    // Already member?
     if (club.members.includes(studentId)) {
-      return res.status(400).json({ message: "Already a member" });
+      return res.status(400).json({ message: 'You are already a member' });
     }
 
-    // Check if request already pending
-    const existingRequest = await MembershipRequest.findOne({
+    // Already pending request?
+    const existing = await MembershipRequest.findOne({
       student: studentId,
       club: clubId,
-      status: "pending",
+      status: 'pending',
     });
-    if (existingRequest) {
-      return res.status(400).json({ message: "Request already pending" });
-    }
+    if (existing) return res.status(400).json({ message: 'Request already pending' });
 
     const request = new MembershipRequest({
       student: studentId,
       club: clubId,
     });
-
     await request.save();
 
-    res.status(201).json({ message: "Join request sent", request });
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: "Server error" });
+    res.status(201).json({
+      message: 'Join request sent successfully',
+      requestId: request._id,
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Server error' });
   }
 };
 
-// Leader approves/rejects request
-exports.reviewJoinRequest = async (req, res) => {
-  try {
-    const leaderId = req.user.id;
-    const requestId = req.params.requestId;
-    const { action } = req.body; // 'approve' or 'reject'
-
-    const request = await MembershipRequest.findById(requestId)
-      .populate("club")
-      .populate("student");
-
-    if (!request) return res.status(404).json({ message: "Request not found" });
-
-    // Only club leader can review
-    if (request.club.leader.toString() !== leaderId) {
-      return res
-        .status(403)
-        .json({ message: "Not authorized - only club leader" });
-    }
-
-    if (request.status !== "pending") {
-      return res.status(400).json({ message: "Request already processed" });
-    }
-
-    request.status = action === "approve" ? "approved" : "rejected";
-    request.reviewedAt = new Date();
-    request.reviewedBy = leaderId;
-    await request.save();
-
-    if (action === "approve") {
-      // Add student to club members
-      await Club.findByIdAndUpdate(request.club._id, {
-        $addToSet: { members: request.student._id },
-      });
-
-      // Optional: add to student's joinedClubs
-      await User.findByIdAndUpdate(request.student._id, {
-        $addToSet: { joinedClubs: request.club._id },
-      });
-
-      // TODO: Trigger n8n email "You are now a member of [Club Name]"
-    }
-
-    res.json({ message: `Request ${action}d`, request });
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: "Server error" });
-  }
-};
-
-// Leader sees pending requests for their club
+// Leader gets all pending requests for their club
 exports.getPendingRequests = async (req, res) => {
   try {
     const leaderId = req.user.id;
 
     const club = await Club.findOne({ leader: leaderId });
-    if (!club)
-      return res
-        .status(404)
-        .json({ message: "You are not a leader of any club" });
+    if (!club) return res.status(403).json({ message: 'You are not a leader of any club' });
 
     const requests = await MembershipRequest.find({
       club: club._id,
-      status: "pending",
-    }).populate("student", "name email rollNumber");
+      status: 'pending',
+    })
+      .populate('student', 'name email rollNumber') // show student details
+      .sort({ requestedAt: -1 }); // newest first
 
-    res.json({ requests });
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: "Server error" });
+    res.json({
+      clubName: club.name,
+      pendingRequests: requests,
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
+// Leader approves or rejects a request
+exports.reviewRequest = async (req, res) => {
+  try {
+    const leaderId = req.user.id;
+    const requestId = req.params.requestId;
+    const { action, rejectionReason } = req.body; // action: "approve" or "reject"
+
+    if (!['approve', 'reject'].includes(action)) {
+      return res.status(400).json({ message: 'Invalid action' });
+    }
+
+    const request = await MembershipRequest.findById(requestId)
+      .populate('club')
+      .populate('student');
+
+    if (!request) return res.status(404).json({ message: 'Request not found' });
+
+    // Only the club's leader can review
+    if (request.club.leader.toString() !== leaderId) {
+      return res.status(403).json({ message: 'Not authorized for this club' });
+    }
+
+    if (request.status !== 'pending') {
+      return res.status(400).json({ message: 'Request already processed' });
+    }
+
+    request.status = action;
+    request.reviewedAt = new Date();
+    request.reviewedBy = leaderId;
+    request.rejectionReason = action === 'reject' ? rejectionReason : undefined;
+    await request.save();
+
+    if (action === 'approve') {
+      // Add student to club members
+      await Club.findByIdAndUpdate(request.club._id, {
+        $addToSet: { members: request.student._id },
+      });
+
+      // Add club to student's joinedClubs
+      await User.findByIdAndUpdate(request.student._id, {
+        $addToSet: { joinedClubs: request.club._id },
+      });
+
+      // TODO: Later add n8n email trigger here
+      // await axios.post('YOUR_N8N_WEBHOOK', {
+      //   type: 'membership_approved',
+      //   email: request.student.email,
+      //   clubName: request.club.name
+      // });
+    }
+
+    res.json({
+      message: `Request ${action}d successfully`,
+      request,
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Server error' });
   }
 };

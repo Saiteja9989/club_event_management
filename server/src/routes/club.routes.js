@@ -8,10 +8,14 @@ const clubController = require('../controllers/club.controller');
 router.post('/', protect, adminOnly, clubController.createClub);
 router.patch('/:clubId/assign-leader', protect, adminOnly, clubController.assignLeader);
 
-router.post('/:clubId/join', protect, studentOnly, clubController.requestJoinClub);
+// Student join request (protected + student only)
+router.post('/:clubId/join', protect, studentOnly, clubController.requestJoin);
+
+// Leader views pending requests for their club
 router.get('/pending-requests', protect, leaderOnly, clubController.getPendingRequests);
-router.patch('/requests/:requestId/review', protect, leaderOnly, clubController.reviewJoinRequest);
+
+// Leader reviews (approve/reject) a request
+router.patch('/requests/:requestId/review', protect, leaderOnly, clubController.reviewRequest);
 
 module.exports = router;
 
-module.exports = router;
