@@ -25,6 +25,7 @@ const membershipRequestSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
   },
+   rejectionReason: String,
 });
 
 module.exports = mongoose.model('MembershipRequest', membershipRequestSchema);
