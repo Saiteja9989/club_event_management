@@ -1,15 +1,15 @@
-const mongoose = require('mongoose');
-const bcrypt = require('bcryptjs');
+const mongoose = require("mongoose");
+const bcrypt = require("bcryptjs");
 
 const userSchema = new mongoose.Schema({
   name: {
     type: String,
-    required: [true, 'Name is required'],
+    required: [true, "Name is required"],
     trim: true,
   },
   email: {
     type: String,
-    required: [true, 'Email is required'],
+    required: [true, "Email is required"],
     unique: true,
     lowercase: true,
     trim: true,
@@ -22,42 +22,69 @@ const userSchema = new mongoose.Schema({
     sparse: true, // Allows null for admin
     validate: {
       validator: function (value) {
-        if (this.role === 'student') {
+        if (this.role === "student") {
           return !!value && value.length >= 6;
         }
         return true; // leaders & admin → optional/null
       },
-      message: 'Roll number is required and must be at least 6 characters for students',
+      message:
+        "Roll number is required and must be at least 6 characters for students",
     },
   },
   password: {
     type: String,
-    required: [true, 'Password is required'],
+    required: [true, "Password is required"],
     minlength: 6,
     select: false,
   },
   role: {
     type: String,
-    enum: ['student', 'leader', 'admin'],
-    default: 'student',
+    enum: ["student", "leader", "admin"],
+    default: "student",
   },
-  joinedClubs: [{
+  joinedClubs: [
+    {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Club",
+    },
+  ],
+  clubId: {
+    // only meaningful for leaders
     type: mongoose.Schema.Types.ObjectId,
-    ref: 'Club',
-  }],
-  clubId: { // only meaningful for leaders
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'Club',
+    ref: "Club",
   },
   createdAt: {
     type: Date,
     default: Date.now,
   },
+
+  isActive: {
+    type: Boolean,
+    default: true,
+  },
+  // optional: lastLogin if you want it later
+  lastLogin: {
+    type: Date,
+  },
+
+  createdEvents: [
+    {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Event",
+    },
+  ],
+  resetPasswordToken: {
+    type: String,
+  },
+
+  resetPasswordExpires: {
+    type: Date,
+  },
 });
 
 // Password hash (unchanged)
-userSchema.pre('save', async function () {
-  if (!this.isModified('password')) return;
+userSchema.pre("save", async function () {
+  if (!this.isModified("password")) return;
 
   const salt = await bcrypt.genSalt(10);
   this.password = await bcrypt.hash(this.password, salt);
@@ -68,4 +95,4 @@ userSchema.methods.comparePassword = async function (candidatePassword) {
   return await bcrypt.compare(candidatePassword, this.password);
 };
 
-module.exports = mongoose.model('User', userSchema);
+module.exports = mongoose.model("User", userSchema);

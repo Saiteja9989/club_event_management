@@ -11,11 +11,12 @@ const membershipRequestSchema = new mongoose.Schema({
     ref: 'Club',
     required: true,
   },
-  status: {
+   status: {
     type: String,
-    enum: ['pending', 'approved', 'rejected'],
-    default: 'pending',
+    enum: ['join', 'pending', 'approved', 'rejected'],  // ← added 'join'
+    default: 'join',  // ← default is 'join' (available to request)
   },
+   
   requestedAt: {
     type: Date,
     default: Date.now,
@@ -25,7 +26,12 @@ const membershipRequestSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
   },
-   rejectionReason: String,
+  // New field: reason to join (required)
+  reasonToJoin: {
+    type: String,
+    trim: true,
+    minlength: [10, 'Reason must be at least 10 characters'],
+  },
 });
 
 module.exports = mongoose.model('MembershipRequest', membershipRequestSchema);
