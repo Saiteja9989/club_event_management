@@ -4,6 +4,7 @@ const Club = require("../models/club.model");
 const User = require("../models/user.model");
 const QRCode = require("qrcode");
 const crypto = require("crypto");
+const axios = require('axios');
 const { s3, bucketName } = require("../config/s3");
 
 /**
@@ -339,9 +340,6 @@ exports.getAttendedEvents = async (req, res) => {
         message: "Unauthorized - No user ID found",
       });
     }
-
-    console.log("Fetching attended events for student:", studentId.toString());
-
     const registrations = await EventRegistration.find({
       student: studentId,
       attended: true,
@@ -352,16 +350,6 @@ exports.getAttendedEvents = async (req, res) => {
       })
       .sort({ attendedAt: -1 })
       .lean(); // faster & easier to work with
-
-    console.log("Found attended registrations:", registrations.length);
-
-    // Debug logs for first few events
-    registrations.slice(0, 3).forEach((r, index) => {
-      console.log(`Attended Event ${index + 1}:`, {
-        title: r.event?.title || "Untitled",
-        clubName: r.event?.clubName || "Not Available",
-      });
-    });
 
     const events = registrations
       .filter((r) => r.event)
@@ -390,7 +378,6 @@ exports.getAttendedEvents = async (req, res) => {
       attended: events,
     });
   } catch (err) {
-    console.error("Get attended events error:", err);
     res.status(500).json({
       success: false,
       message: "Server error",
@@ -410,22 +397,24 @@ exports.registerForEvent = async (req, res) => {
     const studentId = req.user._id;
     const { eventId } = req.params;
 
-    console.log(`[registerForEvent] Student: ${studentId}, Event: ${eventId}`);
-
     // 1. Check event
-    const event = await Event.findById(eventId);
+    const event = await Event.findById(eventId).populate(
+      "createdBy",
+      "name email",
+    );
+
     if (!event || event.status !== "approved") {
       return res.status(404).json({ message: "Event not available" });
     }
 
-    // 2. Block paid
+    // 2. Block paid events
     if (event.isPaid === true && event.price > 0) {
       return res.status(400).json({
         message: "This is a paid event. Please complete payment to register.",
       });
     }
 
-    // 3. Prevent duplicate
+    // 3. Prevent duplicate registration
     const alreadyRegistered = await EventRegistration.findOne({
       student: studentId,
       event: eventId,
@@ -436,44 +425,29 @@ exports.registerForEvent = async (req, res) => {
 
     // 4. Generate QR token
     const qrToken = crypto.randomBytes(16).toString("hex");
-  
-
-    // 5. QR payload
     const qrPayload = `event:${eventId}|student:${studentId}|token:${qrToken}`;
-    
 
-    // 6. Generate QR buffer (separate try-catch)
-    let qrBuffer;
-    try {
-      qrBuffer = await QRCode.toBuffer(qrPayload, {
-        width: 300,
-        margin: 2,
-      });
-    } catch (qrErr) {
-      return res.status(500).json({ message: "Failed to generate QR code" });
-    }
+    // 5. Generate QR
+    const qrBuffer = await QRCode.toBuffer(qrPayload, {
+      width: 300,
+      margin: 2,
+    });
 
-    // 7. Upload to S3 (separate try-catch)
-    let qrCodeUrl;
-    try {
-      const key = `events/qr-codes/${eventId}_${studentId}_${Date.now()}.png`;
-      const uploadResult = await s3
-        .upload({
-          Bucket: bucketName,
-          Key: key,
-          Body: qrBuffer,
-          ContentType: "image/png",
-          ACL: "public-read",
-        })
-        .promise();
+    // 6. Upload QR to S3
+    const key = `events/qr-codes/${eventId}_${studentId}_${Date.now()}.png`;
+    const uploadResult = await s3
+      .upload({
+        Bucket: bucketName,
+        Key: key,
+        Body: qrBuffer,
+        ContentType: "image/png",
+        ACL: "public-read",
+      })
+      .promise();
 
-      qrCodeUrl = uploadResult.Location;
-     
-    } catch (s3Err) {
-      return res.status(500).json({ message: "Failed to upload QR to storage" });
-    }
+    const qrCodeUrl = uploadResult.Location;
 
-    // 8. Save registration
+    // 7. Save registration
     const registration = await EventRegistration.create({
       student: studentId,
       event: eventId,
@@ -482,14 +456,38 @@ exports.registerForEvent = async (req, res) => {
       qrGeneratedAt: new Date(),
     });
 
+    // 8. Notify n8n (🔥 IMPORTANT PART 🔥)
+    axios
+      .post("http://56.228.28.193:5678/webhook-test/club-event-notifications", {
+        type: "event_registered",
+        studentId,
+        studentName: req.user.name,
+        studentEmail: req.user.email,
+
+        eventId: event._id,
+        eventTitle: event.title,
+        eventDate: event.date,
+        eventTime: event.time,
+        venue: event.venue,
+
+        qrCodeUrl,
+      })
+      .catch((err) => {
+        console.error("n8n webhook failed:", err.message);
+      });
+
+    // 9. Respond to frontend
     res.status(201).json({
       success: true,
-      message: "Registered successfully (free event)",
+      message: "Registered successfully",
       registrationId: registration._id,
       qrCode: qrCodeUrl,
     });
   } catch (err) {
-    res.status(500).json({ message: "Server error", error: err.message });
+    res.status(500).json({
+      message: "Server error",
+      error: err.message,
+    });
   }
 };
 
@@ -619,6 +617,7 @@ exports.markAttendance = async (req, res) => {
   }
 };
 
+
 // Leader downloads attended students for their event (from EventRegistration)
 exports.getAttendedStudents = async (req, res) => {
   try {
@@ -703,3 +702,4 @@ exports.getEventsForReminders = async (req, res) => {
     });
   }
 };
+

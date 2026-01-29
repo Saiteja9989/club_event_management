@@ -1,7 +1,7 @@
 import * as React from "react";
 
 const TOAST_LIMIT = 1;
-const TOAST_REMOVE_DELAY = 3500; // 3.5 seconds
+const TOAST_REMOVE_DELAY = 3500;
 
 
 let count = 0;
@@ -87,17 +87,22 @@ function toast({ ...props }) {
   const dismiss = () =>
     dispatch({ type: "DISMISS_TOAST", toastId: id });
 
-  dispatch({
-    type: "ADD_TOAST",
-    toast: {
-      ...props,
-      id,
-      open: true,
-      onOpenChange: (open) => {
-        if (!open) dismiss();
-      },
+ dispatch({
+  type: "ADD_TOAST",
+  toast: {
+    ...props,
+    id,
+    open: true,
+    onOpenChange: (open) => {
+      if (!open) dismiss();
     },
-  });
+  },
+});
+
+// ⏱ auto dismiss after 3 seconds
+setTimeout(() => {
+  dispatch({ type: "DISMISS_TOAST", toastId: id });
+}, TOAST_REMOVE_DELAY);
 
   return { id, dismiss, update };
 }
