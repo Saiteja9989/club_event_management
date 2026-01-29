@@ -4,7 +4,7 @@ const Club = require("../models/club.model");
 const User = require("../models/user.model");
 const QRCode = require("qrcode");
 const crypto = require("crypto");
-const axios = require('axios');
+const axios = require("axios");
 const { s3, bucketName } = require("../config/s3");
 
 /**
@@ -302,11 +302,11 @@ exports.getRegisteredEvents = async (req, res) => {
     })
       .populate({
         path: "event",
-        select: "title description date time venue clubName poster maxParticipants status visibility isPaid price",
+        select:
+          "title description date time venue clubName poster maxParticipants status visibility isPaid price",
       })
       .sort({ registeredAt: -1 })
       .lean();
-
 
     const events = registrations.map((reg) => ({
       ...reg.event,
@@ -346,7 +346,8 @@ exports.getAttendedEvents = async (req, res) => {
     })
       .populate({
         path: "event",
-        select: "title description date time venue clubName poster maxParticipants status visibility isPaid price", // include clubName
+        select:
+          "title description date time venue clubName poster maxParticipants status visibility isPaid price", // include clubName
       })
       .sort({ attendedAt: -1 })
       .lean(); // faster & easier to work with
@@ -397,12 +398,10 @@ exports.registerForEvent = async (req, res) => {
     const studentId = req.user._id;
     const { eventId } = req.params;
 
-    // 1. Check event
-    const event = await Event.findById(eventId).populate(
-      "createdBy",
-      "name email",
-    );
+    console.log(`[registerForEvent] Student: ${studentId}, Event: ${eventId}`);
 
+    // 1. Check event
+    const event = await Event.findById(eventId);
     if (!event || event.status !== "approved") {
       return res.status(404).json({ message: "Event not available" });
     }
@@ -419,35 +418,53 @@ exports.registerForEvent = async (req, res) => {
       student: studentId,
       event: eventId,
     });
+
     if (alreadyRegistered) {
       return res.status(400).json({ message: "Already registered" });
     }
 
     // 4. Generate QR token
     const qrToken = crypto.randomBytes(16).toString("hex");
+
+    // 5. Create QR payload
     const qrPayload = `event:${eventId}|student:${studentId}|token:${qrToken}`;
 
-    // 5. Generate QR
-    const qrBuffer = await QRCode.toBuffer(qrPayload, {
-      width: 300,
-      margin: 2,
-    });
+    // 6. Generate QR buffer
+    let qrBuffer;
+    try {
+      qrBuffer = await QRCode.toBuffer(qrPayload, {
+        width: 300,
+        margin: 2,
+      });
+    } catch (qrErr) {
+      return res.status(500).json({
+        message: "Failed to generate QR code",
+      });
+    }
 
-    // 6. Upload QR to S3
-    const key = `events/qr-codes/${eventId}_${studentId}_${Date.now()}.png`;
-    const uploadResult = await s3
-      .upload({
-        Bucket: bucketName,
-        Key: key,
-        Body: qrBuffer,
-        ContentType: "image/png",
-        ACL: "public-read",
-      })
-      .promise();
+    // 7. Upload QR to S3
+    let qrCodeUrl;
+    try {
+      const key = `events/qr-codes/${eventId}_${studentId}_${Date.now()}.png`;
 
-    const qrCodeUrl = uploadResult.Location;
+      const uploadResult = await s3
+        .upload({
+          Bucket: bucketName,
+          Key: key,
+          Body: qrBuffer,
+          ContentType: "image/png",
+          ACL: "public-read",
+        })
+        .promise();
 
-    // 7. Save registration
+      qrCodeUrl = uploadResult.Location;
+    } catch (s3Err) {
+      return res.status(500).json({
+        message: "Failed to upload QR to storage",
+      });
+    }
+
+    // 8. Save registration
     const registration = await EventRegistration.create({
       student: studentId,
       event: eventId,
@@ -458,7 +475,7 @@ exports.registerForEvent = async (req, res) => {
 
     // 8. Notify n8n (🔥 IMPORTANT PART 🔥)
     axios
-      .post("http://56.228.28.193:5678/webhook-test/club-event-notifications", {
+      .post(process.env.N8N_EVENT_REGISTER_WEBHOOK, {
         type: "event_registered",
         studentId,
         studentName: req.user.name,
@@ -475,11 +492,10 @@ exports.registerForEvent = async (req, res) => {
       .catch((err) => {
         console.error("n8n webhook failed:", err.message);
       });
-
-    // 9. Respond to frontend
+    // 9. Response
     res.status(201).json({
       success: true,
-      message: "Registered successfully",
+      message: "Registered successfully (free event)",
       registrationId: registration._id,
       qrCode: qrCodeUrl,
     });
@@ -490,7 +506,6 @@ exports.registerForEvent = async (req, res) => {
     });
   }
 };
-
 
 /**
  * Leader marks attendance via QR scan
@@ -617,7 +632,6 @@ exports.markAttendance = async (req, res) => {
   }
 };
 
-
 // Leader downloads attended students for their event (from EventRegistration)
 exports.getAttendedStudents = async (req, res) => {
   try {
@@ -671,7 +685,7 @@ exports.getAttendedStudents = async (req, res) => {
   }
 };
 
-/** 
+/**
  * n8n – Fetch approved upcoming events for reminders
  **/
 
@@ -702,4 +716,3 @@ exports.getEventsForReminders = async (req, res) => {
     });
   }
 };
-
