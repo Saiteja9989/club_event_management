@@ -3,6 +3,7 @@ import React, { useState } from 'react';
 import Sidebar from './Sidebar';
 import NotificationBell from '../common/NotificationBell';
 import ThemeToggle from '../common/ThemeToggle';
+import ChatBot from '../common/ChatBot';
 import { Menu, X } from 'lucide-react';
 import { Button } from '../ui/button';
 
@@ -65,6 +66,8 @@ export default function DashboardLayout({ children, title }) {
           {children}
         </main>
       </div>
+
+      <ChatBot />
     </div>
   );
 }

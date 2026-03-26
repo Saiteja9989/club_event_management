@@ -14,6 +14,7 @@ app.use('/api/students', require('../routes/student.routes'));
 app.use("/api/payments", require("../routes/payment.routes"));
 app.use("/api/notifications", require("../routes/notification.routes"));
 app.use("/api/clubs/:clubId/messages", require("../routes/message.routes"));
+app.use("/api/chat", require("../routes/chat.routes"));
 
 
 app.get('/', (req, res) => {

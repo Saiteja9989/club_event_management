@@ -5,6 +5,12 @@ import { useToast } from "../components/ui/useToast";
 import { Users, CalendarCheck, School, Eye, EyeOff } from "lucide-react";
 
 
+const QUICK_LOGINS = [
+  { label: 'Student', email: 'kasojuteja14@gmail.com', password: 'sai123', color: 'bg-emerald-500 hover:bg-emerald-600' },
+  { label: 'Leader', email: 'kasojusaiteja1001@gmail.com', password: 'sai123', color: 'bg-indigo-500 hover:bg-indigo-600' },
+  { label: 'Admin', email: 'Admin@college.com', password: 'Admin@123', color: 'bg-rose-500 hover:bg-rose-600' },
+];
+
 export default function LoginPage() {
   const { login } = useAuth();
   const navigate = useNavigate();
@@ -14,6 +20,18 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+
+  const handleQuickLogin = async (ql) => {
+    setIsLoading(true);
+    const success = await login(ql.email, ql.password);
+    setIsLoading(false);
+    if (success) {
+      toast({ title: `Logged in as ${ql.label} 🎉`, description: 'Redirecting…' });
+      setTimeout(() => navigate('/'), 1000);
+    } else {
+      toast({ variant: 'destructive', title: 'Login failed', description: 'Check credentials.' });
+    }
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -91,6 +109,29 @@ export default function LoginPage() {
             <p className="mt-2 text-muted-foreground">
               Welcome back! Please enter your details.
             </p>
+          </div>
+
+          {/* Quick Login */}
+          <div className="mb-6">
+            <p className="text-xs font-medium text-muted-foreground mb-2 text-center">Quick Login</p>
+            <div className="grid grid-cols-3 gap-2">
+              {QUICK_LOGINS.map((ql) => (
+                <button
+                  key={ql.label}
+                  type="button"
+                  onClick={() => handleQuickLogin(ql)}
+                  disabled={isLoading}
+                  className={`h-9 rounded-lg text-white text-sm font-semibold transition disabled:opacity-50 ${ql.color}`}
+                >
+                  {ql.label}
+                </button>
+              ))}
+            </div>
+            <div className="flex items-center gap-3 mt-5">
+              <div className="flex-1 h-px bg-border" />
+              <span className="text-xs text-muted-foreground">or enter manually</span>
+              <div className="flex-1 h-px bg-border" />
+            </div>
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-6">
