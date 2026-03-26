@@ -1,11 +1,19 @@
 // src/pages/leader/ClubLeaderDashboard.jsx
 import React, { useState, useEffect } from 'react';
 import DashboardLayout from '../../components/layout/DashboardLayout';
-import clubLeaderApi from '@/api/clubsApi'; // Adjust path if needed
+import clubLeaderApi from '@/api/clubsApi';
 import { useToast } from "@/components/ui/useToast";
+import { useAuth } from '../../context/AuthContext';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
+import { Loader2 } from 'lucide-react';
+import jsPDF from 'jspdf';
 
 export default function ClubLeaderDashboard() {
   const { toast } = useToast();
+  const { user } = useAuth();
 
   const [clubData, setClubData] = useState(null);
   const [upcomingEvents, setUpcomingEvents] = useState([]);
@@ -14,13 +22,23 @@ export default function ClubLeaderDashboard() {
     activeEvents: 0,
     pendingRequests: 0,
     totalAttendees: 0,
-    activeEventsChange: 0,        // +2, -1, etc.
+    activeEventsChange: 0,
     pendingRequestsChange: 0,
-    totalAttendeesChange: 0,      // percentage
+    totalAttendeesChange: 0,
   });
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+
+  // Edit Profile modal
+  const [editProfileOpen, setEditProfileOpen] = useState(false);
+  const [profileForm, setProfileForm] = useState({ name: '', email: '' });
+  const [profileSaving, setProfileSaving] = useState(false);
+
+  // Club Settings modal
+  const [clubSettingsOpen, setClubSettingsOpen] = useState(false);
+  const [clubForm, setClubForm] = useState({ name: '', description: '' });
+  const [clubSaving, setClubSaving] = useState(false);
 
   useEffect(() => {
     fetchClubDashboard();
@@ -41,7 +59,6 @@ export default function ClubLeaderDashboard() {
         activeEvents: res.data.clubData?.ApprovedEvents || 0,
         pendingRequests: res.data.clubData?.pendingRequests || 0,
         totalAttendees: res.data.clubData?.totalRegistrations || 0,
-        // Real changes — coming from backend
         activeEventsChange: res.data.clubData?.activeEventsChange || 0,
         pendingRequestsChange: res.data.clubData?.pendingRequestsChange || 0,
         totalAttendeesChange: res.data.clubData?.totalAttendeesChange || 0,
@@ -57,6 +74,177 @@ export default function ClubLeaderDashboard() {
     } finally {
       setLoading(false);
     }
+  };
+
+  // ── Edit Profile ──────────────────────────────────────────────
+  const handleOpenEditProfile = () => {
+    setProfileForm({
+      name: user?.name || clubData?.leaderName || '',
+      email: user?.email || '',
+    });
+    setEditProfileOpen(true);
+  };
+
+  const handleSaveProfile = async () => {
+    if (!profileForm.name.trim() || !profileForm.email.trim()) {
+      toast({ variant: 'destructive', description: 'Name and email are required.' });
+      return;
+    }
+    setProfileSaving(true);
+    try {
+      const res = await clubLeaderApi.updateProfile({
+        name: profileForm.name.trim(),
+        email: profileForm.email.trim(),
+      });
+      setClubData(prev => ({ ...prev, leaderName: res.data.user.name }));
+      // Sync localStorage
+      const stored = JSON.parse(localStorage.getItem('user') || '{}');
+      localStorage.setItem('user', JSON.stringify({
+        ...stored,
+        name: res.data.user.name,
+        email: res.data.user.email,
+      }));
+      setEditProfileOpen(false);
+      toast({ description: 'Profile updated successfully!' });
+    } catch (err) {
+      toast({ variant: 'destructive', description: err.response?.data?.message || 'Failed to update profile.' });
+    } finally {
+      setProfileSaving(false);
+    }
+  };
+
+  // ── Club Settings ─────────────────────────────────────────────
+  const handleOpenClubSettings = () => {
+    setClubForm({
+      name: clubData?.name || '',
+      description: clubData?.description || '',
+    });
+    setClubSettingsOpen(true);
+  };
+
+  const handleSaveClubSettings = async () => {
+    if (!clubForm.name.trim()) {
+      toast({ variant: 'destructive', description: 'Club name is required.' });
+      return;
+    }
+    setClubSaving(true);
+    try {
+      const res = await clubLeaderApi.updateMyClub({
+        name: clubForm.name.trim(),
+        description: clubForm.description.trim(),
+      });
+      setClubData(prev => ({
+        ...prev,
+        name: res.data.club.name,
+        description: res.data.club.description,
+      }));
+      setClubSettingsOpen(false);
+      toast({ description: 'Club settings saved!' });
+    } catch (err) {
+      toast({ variant: 'destructive', description: err.response?.data?.message || 'Failed to update club.' });
+    } finally {
+      setClubSaving(false);
+    }
+  };
+
+  // ── Get PDF ───────────────────────────────────────────────────
+  const handleGetPDF = () => {
+    const doc = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'a4' });
+    const margin = 40;
+    let y = 60;
+
+    // Title
+    doc.setFontSize(22);
+    doc.setTextColor(30, 58, 95);
+    doc.text('Club Activity Report', margin, y);
+
+    y += 20;
+    doc.setFontSize(11);
+    doc.setTextColor(120, 120, 120);
+    doc.text(
+      `Generated on: ${new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' })}`,
+      margin, y
+    );
+
+    y += 12;
+    doc.setDrawColor(200, 200, 200);
+    doc.line(margin, y, 555, y);
+    y += 22;
+
+    // Club info
+    doc.setFontSize(14);
+    doc.setTextColor(0, 0, 0);
+    doc.text(`Club: ${clubData.name || 'N/A'}`, margin, y);
+    y += 18;
+    doc.setFontSize(11);
+    doc.setTextColor(80, 80, 80);
+    doc.text(`Leader: ${clubData.leaderName || 'N/A'}`, margin, y);
+    y += 14;
+    const descLines = doc.splitTextToSize(clubData.description || 'No description provided.', 515);
+    doc.text(descLines, margin, y);
+    y += descLines.length * 14 + 22;
+
+    doc.setDrawColor(230, 230, 230);
+    doc.line(margin, y, 555, y);
+    y += 22;
+
+    // Stats
+    doc.setFontSize(14);
+    doc.setTextColor(30, 58, 95);
+    doc.text('Event Statistics', margin, y);
+    y += 18;
+    doc.setFontSize(11);
+    doc.setTextColor(60, 60, 60);
+    [
+      `Approved Events: ${clubData.ApprovedEvents || 0}`,
+      `Pending Events:  ${clubData.PendingEvents || 0}`,
+      `Rejected Events: ${clubData.RejectedEvents || 0}`,
+      `Total Registrations: ${clubData.totalRegistrations || 0}`,
+      `Total Members: ${clubData.memberCount || 0}`,
+    ].forEach(line => { doc.text(line, margin, y); y += 16; });
+    y += 10;
+
+    // Upcoming events table
+    if (upcomingEvents.length > 0) {
+      doc.setDrawColor(230, 230, 230);
+      doc.line(margin, y, 555, y);
+      y += 22;
+      doc.setFontSize(14);
+      doc.setTextColor(30, 58, 95);
+      doc.text('Upcoming Events', margin, y);
+      y += 18;
+
+      doc.setFontSize(9);
+      doc.setTextColor(120, 120, 120);
+      doc.text('EVENT', margin, y);
+      doc.text('DATE', 250, y);
+      doc.text('VENUE', 380, y);
+      doc.text('STATUS', 500, y);
+      y += 6;
+      doc.setDrawColor(210, 210, 210);
+      doc.line(margin, y, 555, y);
+      y += 14;
+
+      doc.setFontSize(10);
+      doc.setTextColor(30, 30, 30);
+      upcomingEvents.forEach(event => {
+        if (y > 760) return;
+        doc.text((event.title || 'Untitled').slice(0, 28), margin, y);
+        doc.text(
+          event.date
+            ? new Date(event.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
+            : 'TBD',
+          250, y
+        );
+        doc.text((event.venue || 'TBD').slice(0, 18), 380, y);
+        doc.text((event.status || 'DRAFT').toUpperCase(), 500, y);
+        y += 18;
+      });
+    }
+
+    const safeName = (clubData.name || 'Club').replace(/[^a-zA-Z0-9]/g, '_');
+    doc.save(`${safeName}_Activity_Report.pdf`);
+    toast({ description: 'Report downloaded!' });
   };
 
   if (loading) {
@@ -137,16 +325,22 @@ export default function ClubLeaderDashboard() {
             </div>
 
             <div className="flex gap-3 shrink-0">
-              <button className="px-4 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-sm font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
+              <button
+                onClick={handleOpenEditProfile}
+                className="px-4 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-sm font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
+              >
                 Edit Profile
               </button>
-              <button className="px-4 py-2 bg-primary text-white rounded-lg text-sm font-semibold hover:bg-blue-700 transition-colors shadow-sm">
+              <button
+                onClick={handleOpenClubSettings}
+                className="px-4 py-2 bg-primary text-white rounded-lg text-sm font-semibold hover:bg-blue-700 transition-colors shadow-sm"
+              >
                 Club Settings
               </button>
             </div>
           </div>
 
-          {/* Stats Row - Real Changes */}
+          {/* Stats Row */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 px-6 md:px-8 pb-6 md:pb-8 border-t border-slate-200 dark:border-slate-800 pt-6">
             <div className="flex flex-col gap-2 rounded-xl p-5 border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">
               <div className="flex justify-between items-center">
@@ -348,7 +542,10 @@ export default function ClubLeaderDashboard() {
                 Your club activity report for last month is now available for download.
               </p>
             </div>
-            <button className="flex items-center gap-2 px-4 py-2 bg-slate-900 dark:bg-slate-800 text-white rounded-lg text-xs font-bold hover:bg-slate-800 transition-colors">
+            <button
+              onClick={handleGetPDF}
+              className="flex items-center gap-2 px-4 py-2 bg-slate-900 dark:bg-slate-800 text-white rounded-lg text-xs font-bold hover:bg-slate-800 transition-colors"
+            >
               <span className="material-symbols-outlined text-[18px]">download</span>
               Get PDF
             </button>
@@ -363,6 +560,98 @@ export default function ClubLeaderDashboard() {
           </button>
         </div>
       </div>
+
+      {/* Edit Profile Modal */}
+      <Dialog open={editProfileOpen} onOpenChange={setEditProfileOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Edit Profile</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-1.5">
+              <Label htmlFor="p-name">Name</Label>
+              <Input
+                id="p-name"
+                value={profileForm.name}
+                onChange={e => setProfileForm(f => ({ ...f, name: e.target.value }))}
+                placeholder="Your full name"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="p-email">Email</Label>
+              <Input
+                id="p-email"
+                type="email"
+                value={profileForm.email}
+                onChange={e => setProfileForm(f => ({ ...f, email: e.target.value }))}
+                placeholder="your@email.com"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <button
+              onClick={() => setEditProfileOpen(false)}
+              className="px-4 py-2 text-sm font-medium text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleSaveProfile}
+              disabled={profileSaving}
+              className="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg text-sm font-semibold hover:bg-blue-700 transition-colors disabled:opacity-50"
+            >
+              {profileSaving && <Loader2 className="h-4 w-4 animate-spin" />}
+              {profileSaving ? 'Saving...' : 'Save Changes'}
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Club Settings Modal */}
+      <Dialog open={clubSettingsOpen} onOpenChange={setClubSettingsOpen}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Club Settings</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-1.5">
+              <Label htmlFor="c-name">Club Name</Label>
+              <Input
+                id="c-name"
+                value={clubForm.name}
+                onChange={e => setClubForm(f => ({ ...f, name: e.target.value }))}
+                placeholder="Club name"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="c-desc">Description</Label>
+              <Textarea
+                id="c-desc"
+                value={clubForm.description}
+                onChange={e => setClubForm(f => ({ ...f, description: e.target.value }))}
+                placeholder="Describe your club..."
+                rows={4}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <button
+              onClick={() => setClubSettingsOpen(false)}
+              className="px-4 py-2 text-sm font-medium text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleSaveClubSettings}
+              disabled={clubSaving}
+              className="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg text-sm font-semibold hover:bg-blue-700 transition-colors disabled:opacity-50"
+            >
+              {clubSaving && <Loader2 className="h-4 w-4 animate-spin" />}
+              {clubSaving ? 'Saving...' : 'Save Settings'}
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </DashboardLayout>
   );
 }

@@ -4,6 +4,7 @@ const Event = require('../models/event.model');
 const EventRegistration= require('../models/eventRegistration.model')
 const MembershipRequest = require('../models/membershipRequest.model');
 const axios = require('axios');
+const { emitNotification } = require('../utils/socket');
 
 /**
  * Create a new club
@@ -56,6 +57,14 @@ exports.createClub = async (req, res) => {
           clubName: club.name,
         })
         .catch((err) => console.error("n8n failed:", err));
+
+      // Socket notification
+      emitNotification(user._id, {
+        type: 'leader_assigned',
+        title: 'You are now a Club Leader!',
+        message: `Congratulations! You have been assigned as leader of "${club.name}".`,
+        link: '/leader/dashboard',
+      });
 
       message += " and leader assigned";
     }
@@ -260,6 +269,16 @@ exports.requestJoin = async (req, res) => {
 
     await request.save();
 
+    // Notify the club leader of the new join request
+    if (club.leader) {
+      emitNotification(club.leader, {
+        type: 'new_member_request',
+        title: 'New Join Request',
+        message: `${req.user.name || 'A student'} wants to join "${club.name}".`,
+        link: '/leader/memberships',
+      });
+    }
+
     res.status(201).json({
       message: "Join request sent",
       requestId: request._id,
@@ -373,6 +392,24 @@ exports.reviewRequest = async (req, res) => {
     }
 
     await request.save();
+
+    // Notify the student of the decision
+    if (action === 'approve') {
+      emitNotification(request.student._id, {
+        type: 'club_joined',
+        title: 'Membership Approved!',
+        message: `Your request to join "${request.club.name}" has been approved. Welcome!`,
+        link: '/student/clubs',
+      });
+    } else if (action === 'reject') {
+      emitNotification(request.student._id, {
+        type: 'membership_rejected',
+        title: 'Membership Request Rejected',
+        message: `Your request to join "${request.club.name}" was not approved.`,
+        link: '/student/clubs',
+      });
+    }
+
     res.json({ success: true });
   } catch (err) {
     console.error(err);
@@ -426,6 +463,14 @@ exports.assignLeader = async (req, res) => {
       })
       .catch((err) => console.error("n8n failed:", err));
 
+    // Socket notification to the newly assigned leader
+    emitNotification(user._id, {
+      type: 'leader_assigned',
+      title: 'You are now a Club Leader!',
+      message: `Congratulations! You have been assigned as leader of "${club.name}".`,
+      link: '/leader/dashboard',
+    });
+
     res.json({
       message: "Leader assigned",
       leader: user,
@@ -466,6 +511,14 @@ exports.removeMember = async (req, res) => {
 
     await club.save();
     await user.save();
+
+    // Notify the removed user
+    emitNotification(userId, {
+      type: 'club_removed',
+      title: 'Removed from Club',
+      message: `You have been removed from "${club.name}".`,
+      link: '/student/clubs',
+    });
 
     res.json({ message: "Member removed successfully" });
   } catch (error) {
@@ -530,7 +583,30 @@ exports.changeMemberRole = async (req, res) => {
   }
 };
 
-//leader dashboard for his clubs 
+exports.updateMyClub = async (req, res) => {
+  try {
+    const { name, description } = req.body;
+    const leaderId = req.user._id;
+
+    if (!name && !description) {
+      return res.status(400).json({ message: 'Nothing to update' });
+    }
+
+    const updates = {};
+    if (name) updates.name = name.trim();
+    if (description) updates.description = description.trim();
+
+    const club = await Club.findOneAndUpdate({ leader: leaderId }, updates, { new: true });
+    if (!club) return res.status(404).json({ message: 'No club found for this leader' });
+
+    res.json({ success: true, club });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
+//leader dashboard for his clubs
 exports.getMyClubDashboard = async (req, res) => {
   try {
     const leaderId = req.user.id;

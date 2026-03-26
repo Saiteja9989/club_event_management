@@ -1,5 +1,9 @@
 // src/pages/student/StudentMyEvents.jsx
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
+import jsPDF from 'jspdf';
+import html2canvas from 'html2canvas';
+import CertificateTemplate from '../../components/common/CertificateTemplate';
 import DashboardLayout from '../../components/layout/DashboardLayout';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -12,14 +16,6 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog';
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
-import {
   Calendar,
   QrCode,
   Loader2,
@@ -28,12 +24,17 @@ import {
   Search,
   ChevronLeft,
   ChevronRight,
+  Award,
 } from 'lucide-react';
+import AddToCalendarButton from '../../components/common/AddToCalendarButton';
+import FeedbackModal from '../../components/common/FeedbackModal';
+import { StarDisplay } from '../../components/common/StarRating';
 import { useToast } from "@/components/ui/useToast";
 import eventsApi from '../../api/eventsApi';
 
 export default function StudentMyEvents() {
   const { toast } = useToast();
+  const navigate = useNavigate();
 
   const [tab, setTab] = useState("registered");
   const [registered, setRegistered] = useState([]);
@@ -43,6 +44,17 @@ export default function StudentMyEvents() {
   const [qrDialogOpen, setQrDialogOpen] = useState(false);
   const [selectedQrCode, setSelectedQrCode] = useState('');
   const [selectedEventTitle, setSelectedEventTitle] = useState('');
+
+  // Certificate
+  const [certData, setCertData] = useState(null);
+  const [certId, setCertId] = useState('');
+  const [certLoading, setCertLoading] = useState(null);
+  const certRef = useRef(null);
+
+  // Feedback
+  const [feedbackModalOpen, setFeedbackModalOpen] = useState(false);
+  const [feedbackEvent, setFeedbackEvent] = useState(null);
+  const [myRatings, setMyRatings] = useState({}); // { eventId: rating }
 
   // Pagination & Search
   const [currentPage, setCurrentPage] = useState(1);
@@ -62,9 +74,19 @@ export default function StudentMyEvents() {
         eventsApi.getRegisteredEvents(),
         eventsApi.getAttendedEvents(),
       ]);
-      console.log(regRes);
       setRegistered(regRes.data.registered || []);
-      setAttended(attRes.data.attended || []);
+      const attendedList = attRes.data.attended || [];
+      setAttended(attendedList);
+
+      // Load my ratings for all attended events
+      const ratings = {};
+      await Promise.allSettled(
+        attendedList.map(async (ev) => {
+          const r = await eventsApi.getMyFeedback(ev._id);
+          if (r.data.feedback) ratings[ev._id] = r.data.feedback.rating;
+        })
+      );
+      setMyRatings(ratings);
     } catch (err) {
       console.error('Fetch my events error:', err);
       setError('Failed to load your events. Please try again.');
@@ -90,6 +112,44 @@ export default function StudentMyEvents() {
     setSelectedQrCode(event.qrCode);
     setSelectedEventTitle(event.title);
     setQrDialogOpen(true);
+  };
+
+  const handleDownloadCertificate = async (event) => {
+    setCertLoading(event._id);
+    try {
+      const res = await eventsApi.getCertificateData(event._id);
+      const id = `CH-${event._id.toString().slice(-6).toUpperCase()}-${new Date(res.data.data.attendedAt).getFullYear()}`;
+      setCertId(id);
+      setCertData(res.data.data);
+
+      // Wait for React to render the hidden certificate div
+      await new Promise(resolve => setTimeout(resolve, 400));
+
+      const canvas = await html2canvas(certRef.current, {
+        scale: 2,
+        useCORS: true,
+        backgroundColor: '#fffef7',
+        logging: false,
+      });
+
+      const imgData = canvas.toDataURL('image/png');
+      const pdf = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+      pdf.addImage(imgData, 'PNG', 0, 0, 297, 210);
+
+      const safeName = (event.title || 'Event').replace(/[^a-zA-Z0-9]/g, '_').slice(0, 30);
+      pdf.save(`Certificate_${safeName}.pdf`);
+
+      toast({ description: 'Certificate downloaded successfully!' });
+    } catch (err) {
+      toast({
+        variant: 'destructive',
+        description: err.response?.data?.message || 'Failed to generate certificate.',
+      });
+    } finally {
+      setCertLoading(null);
+      setCertData(null);
+      setCertId('');
+    }
   };
 
   // Filter events based on search
@@ -222,6 +282,9 @@ export default function StudentMyEvents() {
                       {tab === "registered" && (
                         <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-foreground text-right">Access</th>
                       )}
+                      {tab === "attended" && (
+                        <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-foreground text-right">Certificate</th>
+                      )}
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border">
@@ -256,15 +319,63 @@ export default function StudentMyEvents() {
                         </td>
                         {tab === "registered" && (
                           <td className="px-6 py-5 text-right">
-                            <Button
-                              size="sm"
-                              className={`gap-2 ${event.qrCode ? 'bg-primary hover:bg-primary/90' : 'bg-muted hover:bg-muted/80'}`}
-                              onClick={() => handleViewQr(event)}
-                              disabled={!event.qrCode}
-                            >
-                              <QrCode className="h-4 w-4" />
-                              {event.qrCode ? 'View QR' : 'No QR'}
-                            </Button>
+                            <div className="flex items-center justify-end gap-2">
+                              <AddToCalendarButton event={event} size="sm" />
+                              <Button
+                                size="sm"
+                                className={`gap-2 ${event.qrCode ? 'bg-primary hover:bg-primary/90' : 'bg-muted hover:bg-muted/80'}`}
+                                onClick={() => handleViewQr(event)}
+                                disabled={!event.qrCode}
+                              >
+                                <QrCode className="h-4 w-4" />
+                                {event.qrCode ? 'View QR' : 'No QR'}
+                              </Button>
+                            </div>
+                          </td>
+                        )}
+                        {tab === "attended" && (
+                          <td className="px-6 py-5 text-right">
+                            <div className="flex items-center justify-end gap-2 flex-wrap">
+                              {/* Rating display / Rate button */}
+                              {myRatings[event._id] ? (
+                                <button
+                                  onClick={() => { setFeedbackEvent(event); setFeedbackModalOpen(true); }}
+                                  className="flex items-center gap-1 text-xs font-semibold text-amber-600 hover:text-amber-700 transition-colors"
+                                  title="Edit your rating"
+                                >
+                                  {[1,2,3,4,5].map((s) => (
+                                    <svg key={s} className="h-4 w-4" fill={s <= myRatings[event._id] ? '#f59e0b' : 'none'} stroke="#f59e0b" strokeWidth="1.5" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" d="M11.48 3.499a.562.562 0 011.04 0l2.125 5.111a.563.563 0 00.475.345l5.518.442c.499.04.701.663.321.988l-4.204 3.602a.563.563 0 00-.182.557l1.285 5.385a.562.562 0 01-.84.61l-4.725-2.885a.563.563 0 00-.586 0L6.982 20.54a.562.562 0 01-.84-.61l1.285-5.386a.562.562 0 00-.182-.557l-4.204-3.602a.563.563 0 01.321-.988l5.518-.442a.563.563 0 00.475-.345L11.48 3.5z" />
+                                    </svg>
+                                  ))}
+                                  <span className="ml-1">{myRatings[event._id]}/5</span>
+                                </button>
+                              ) : (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => { setFeedbackEvent(event); setFeedbackModalOpen(true); }}
+                                  className="gap-1.5 border-amber-300 text-amber-600 hover:bg-amber-50 hover:border-amber-400"
+                                >
+                                  <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M11.48 3.499a.562.562 0 011.04 0l2.125 5.111a.563.563 0 00.475.345l5.518.442c.499.04.701.663.321.988l-4.204 3.602a.563.563 0 00-.182.557l1.285 5.385a.562.562 0 01-.84.61l-4.725-2.885a.563.563 0 00-.586 0L6.982 20.54a.562.562 0 01-.84-.61l1.285-5.386a.562.562 0 00-.182-.557l-4.204-3.602a.563.563 0 01.321-.988l5.518-.442a.563.563 0 00.475-.345L11.48 3.5z" />
+                                  </svg>
+                                  Rate
+                                </Button>
+                              )}
+                              <Button
+                                size="sm"
+                                onClick={() => handleDownloadCertificate(event)}
+                                disabled={certLoading === event._id}
+                                className="gap-2 bg-amber-600 hover:bg-amber-700 text-white"
+                              >
+                                {certLoading === event._id
+                                  ? <Loader2 className="h-4 w-4 animate-spin" />
+                                  : <Award className="h-4 w-4" />
+                                }
+                                {certLoading === event._id ? 'Generating...' : 'Certificate'}
+                              </Button>
+                            </div>
                           </td>
                         )}
                       </tr>
@@ -302,6 +413,25 @@ export default function StudentMyEvents() {
             </div>
           )}
         </main>
+
+        {/* Feedback Modal */}
+        <FeedbackModal
+          open={feedbackModalOpen}
+          onClose={() => setFeedbackModalOpen(false)}
+          event={feedbackEvent}
+          onSubmitted={({ rating }) => {
+            if (feedbackEvent) {
+              setMyRatings((prev) => ({ ...prev, [feedbackEvent._id]: rating }));
+            }
+          }}
+        />
+
+        {/* Hidden certificate div — captured by html2canvas for PDF generation */}
+        {certData && (
+          <div style={{ position: 'fixed', left: '-9999px', top: 0, zIndex: -1 }}>
+            <CertificateTemplate ref={certRef} data={certData} certId={certId} />
+          </div>
+        )}
 
         {/* Footer */}
         <footer className="mt-auto border-t border-border py-10 px-6 md:px-10">

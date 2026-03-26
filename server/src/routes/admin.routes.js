@@ -30,4 +30,13 @@ router.get('/users/:userId/details', userController.getUserDetails);
 // delete a user by Admin
 router.delete('/users/:userId', userController.deleteUser);
 
+// Create a new user (admin)
+router.post('/users', userController.createUser);
+
+// Update user profile (admin)
+router.patch('/users/:userId', userController.updateUser);
+
+// Reset user password (admin)
+router.patch('/users/:userId/reset-password', userController.resetUserPassword);
+
 module.exports = router;

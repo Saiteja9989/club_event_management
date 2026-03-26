@@ -42,8 +42,25 @@ const clubsApi = {
   getMyClubDashboard: () => API.get('/clubs/myclubs'),
     
   // NEW: Change role of member in club
-  changeMemberRole: (clubId, userId, newRole) => 
+  changeMemberRole: (clubId, userId, newRole) =>
     API.patch(`/clubs/${clubId}/members/${userId}/role`, { newRole }),
+
+  // Leader - update their club name/description
+  updateMyClub: (data) => API.patch('/clubs/my-club', data),
+
+  // Any authenticated user - update their own profile
+  updateProfile: (data) => API.patch('/auth/update-profile', data),
+
+  // Club Chat
+  getMessages: (clubId, params) => API.get(`/clubs/${clubId}/messages`, { params }),
+  sendMessage: (clubId, content, attachment) => API.post(`/clubs/${clubId}/messages`, { content, attachment }),
+  pinMessage: (clubId, messageId) => API.patch(`/clubs/${clubId}/messages/${messageId}/pin`),
+  toggleReaction: (clubId, messageId, emoji) => API.patch(`/clubs/${clubId}/messages/${messageId}/react`, { emoji }),
+  uploadAttachment: (clubId, file) => {
+    const form = new FormData();
+    form.append('file', file);
+    return API.post(`/clubs/${clubId}/messages/upload`, form, { headers: { 'Content-Type': 'multipart/form-data' } });
+  },
 };
 
 export default clubsApi;

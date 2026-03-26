@@ -3,6 +3,7 @@ import React, { useState, useEffect } from 'react';
 import DashboardLayout from '../../components/layout/DashboardLayout';
 import eventsApi from '@/api/eventsApi';
 import { useToast } from "@/components/ui/useToast";
+import ConfirmDialog from '../../components/common/ConfirmDialog';
 
 export default function ReviewEvents() {
   const { toast } = useToast();
@@ -23,6 +24,7 @@ export default function ReviewEvents() {
   const [reviewOpen, setReviewOpen] = useState(false);
   const [selectedEvent, setSelectedEvent] = useState(null);
   const [actionLoading, setActionLoading] = useState(false);
+  const [confirmAction, setConfirmAction] = useState(null); // 'approved' | 'rejected' | null
 
   useEffect(() => {
     fetchEvents();
@@ -83,12 +85,7 @@ export default function ReviewEvents() {
   );
 
   const handleReview = async (action) => {
-    const msg = action === 'approved'
-      ? `Approve "${selectedEvent.title}"?`
-      : `Reject "${selectedEvent.title}"? This cannot be undone.`;
-
-    if (!window.confirm(msg)) return;
-
+    setConfirmAction(null);
     setActionLoading(true);
 
     // Optimistic update: immediately move event out of pending
@@ -131,7 +128,6 @@ export default function ReviewEvents() {
 
   const handleOpenReview = (event) => {
     setSelectedEvent(event);
-    console.log(event);
     setReviewOpen(true);
   };
 
@@ -491,7 +487,7 @@ export default function ReviewEvents() {
                   <div className="flex items-center gap-3">
                     <button
                       disabled={actionLoading || selectedEvent.status !== 'pending'}
-                      onClick={() => handleReview('rejected')}
+                      onClick={() => setConfirmAction('rejected')}
                       className="flex items-center justify-center gap-2 px-6 py-2.5 rounded-lg border border-red-200 bg-red-50 text-red-600 hover:bg-red-100 disabled:opacity-50 transition-colors text-sm font-bold"
                     >
                       <span className="material-symbols-outlined text-lg">cancel</span>
@@ -499,7 +495,7 @@ export default function ReviewEvents() {
                     </button>
                     <button
                       disabled={actionLoading || selectedEvent.status !== 'pending'}
-                      onClick={() => handleReview('approved')}
+                      onClick={() => setConfirmAction('approved')}
                       className="flex items-center justify-center gap-2 px-8 py-2.5 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50 transition-colors text-sm font-bold shadow-lg shadow-emerald-500/20"
                     >
                       <span className="material-symbols-outlined text-lg">check_circle</span>
@@ -512,6 +508,24 @@ export default function ReviewEvents() {
           </div>
         )}
       </div>
+
+      <ConfirmDialog
+        open={!!confirmAction}
+        onOpenChange={(open) => { if (!open) setConfirmAction(null); }}
+        title={confirmAction === 'approved' ? 'Approve Event' : 'Reject Event'}
+        description={
+          confirmAction === 'approved'
+            ? `Approve and publish "${selectedEvent?.title}"? It will become visible to students.`
+            : `Reject "${selectedEvent?.title}"? This cannot be undone.`
+        }
+        confirmLabel={confirmAction === 'approved' ? 'Approve & Publish' : 'Reject Event'}
+        confirmClassName={
+          confirmAction === 'approved'
+            ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
+            : 'bg-red-600 hover:bg-red-700 text-white'
+        }
+        onConfirm={() => handleReview(confirmAction)}
+      />
     </DashboardLayout>
   );
 }

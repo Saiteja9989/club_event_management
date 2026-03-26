@@ -37,8 +37,10 @@ router.patch('/:clubId/assign-leader', protect, adminOnly,clubController.assignL
 // NEW: Remove member from club
 router.delete('/:clubId/members/:userId',protect , clubController.removeMember);
 
-router.get('/myclubs', protect, leaderOnly, clubController.getMyClubDashboard);  
+router.get('/myclubs', protect, leaderOnly, clubController.getMyClubDashboard);
 
+// Leader only - update their club name/description
+router.patch('/my-club', protect, leaderOnly, clubController.updateMyClub);
 
 // NEW: Change role of member in club (promote/demote leader)
 router.patch('/:clubId/members/:userId/role', protect, adminOnly,clubController.changeMemberRole);

@@ -1,6 +1,8 @@
 // src/components/layout/DashboardLayout.jsx
 import React, { useState } from 'react';
 import Sidebar from './Sidebar';
+import NotificationBell from '../common/NotificationBell';
+import ThemeToggle from '../common/ThemeToggle';
 import { Menu, X } from 'lucide-react';
 import { Button } from '../ui/button';
 
@@ -28,7 +30,7 @@ export default function DashboardLayout({ children, title }) {
 
       {/* Main Content */}
       <div className="flex-1 flex flex-col">
-        {/* Mobile Header with Toggle */}
+        {/* Mobile Header */}
         <header className="border-b border-border bg-card sticky top-0 z-40 md:hidden">
           <div className="flex h-16 items-center px-4">
             <Button
@@ -40,6 +42,10 @@ export default function DashboardLayout({ children, title }) {
               {sidebarOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
             </Button>
             <h1 className="text-xl font-semibold text-foreground flex-1">{title || 'Dashboard'}</h1>
+            <div className="flex items-center gap-1">
+              <ThemeToggle />
+              <NotificationBell />
+            </div>
           </div>
         </header>
 
@@ -47,8 +53,9 @@ export default function DashboardLayout({ children, title }) {
         <header className="border-b border-border bg-card sticky top-0 z-40 hidden md:block">
           <div className="flex h-16 items-center px-6">
             <h1 className="text-xl font-semibold text-foreground">{title || 'Dashboard'}</h1>
-            <div className="ml-auto flex items-center gap-4">
-              {/* Add user avatar/notifications here later */}
+            <div className="ml-auto flex items-center gap-1">
+              <ThemeToggle />
+              <NotificationBell />
             </div>
           </div>
         </header>

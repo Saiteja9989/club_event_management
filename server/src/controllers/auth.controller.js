@@ -3,6 +3,7 @@ const { generateToken } = require('../utils/jwt.util');
 const axios = require('axios');
 const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
+const { emitNotification } = require('../utils/socket');
 
 /**
  * Register a new student
@@ -40,6 +41,18 @@ exports.register = async (req, res) => {
       name: user.name,
       role: user.role,
     }).catch(err => console.error("n8n email failed:", err));
+
+    // Notify all admins of new registration
+    User.find({ role: 'admin' }).select('_id').lean().then((admins) => {
+      admins.forEach((admin) => {
+        emitNotification(admin._id, {
+          type: 'new_user_registered',
+          title: 'New User Registered',
+          message: `${user.name} (${user.rollNumber}) just created an account.`,
+          link: '/admin/users',
+        });
+      });
+    }).catch(() => {});
 
     const token = generateToken(user);
 
@@ -95,6 +108,7 @@ exports.login = async (req, res) => {
         email: user.email,
         rollNumber: user.rollNumber,
         role: user.role,
+        clubId: user.clubId || null,
       },
     });
   } catch (error) {
@@ -153,6 +167,36 @@ exports.forgotPassword = async (req, res) => {
   }
 };
 
+
+exports.updateProfile = async (req, res) => {
+  try {
+    const { name, email } = req.body;
+    const userId = req.user._id;
+
+    if (!name && !email) {
+      return res.status(400).json({ message: 'Nothing to update' });
+    }
+
+    if (email) {
+      const existing = await User.findOne({ email, _id: { $ne: userId } });
+      if (existing) {
+        return res.status(400).json({ message: 'Email already in use' });
+      }
+    }
+
+    const updates = {};
+    if (name) updates.name = name.trim();
+    if (email) updates.email = email.trim();
+
+    const user = await User.findByIdAndUpdate(userId, updates, { new: true }).select('name email rollNumber role');
+    if (!user) return res.status(404).json({ message: 'User not found' });
+
+    res.json({ success: true, user });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
 
 exports.resetPassword = async (req, res) => {
   try {

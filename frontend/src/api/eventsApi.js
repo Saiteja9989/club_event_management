@@ -41,8 +41,22 @@ const eventsApi = {
   markAttendance: (eventId, qrData) =>
   API.post(`/events/${eventId}/attendance`, { qrData }),
 
-  getAttendedStudents: (eventId) => API.get(`/events/${eventId}/attended-students`)
-  
+  getAttendedStudents: (eventId) => API.get(`/events/${eventId}/attended-students`),
+
+  // GET /api/events/:eventId/certificate - Student gets certificate data for attended event
+  getCertificateData: (eventId) => API.get(`/events/${eventId}/certificate`),
+
+  // GET /api/events/:eventId - Student gets full event details
+  getEventById: (eventId) => API.get(`/events/${eventId}`),
+
+  // PATCH /api/events/:eventId - Leader updates an event
+  updateEvent: (eventId, data) => API.patch(`/events/${eventId}`, data),
+
+  // Feedback
+  submitFeedback: (eventId, data) => API.post(`/events/${eventId}/feedback`, data),
+  getFeedbackSummary: (eventId) => API.get(`/events/${eventId}/feedback/summary`),
+  getMyFeedback: (eventId) => API.get(`/events/${eventId}/feedback/mine`),
+  getEventFeedback: (eventId) => API.get(`/events/${eventId}/feedback`),
 };
 
 export default eventsApi;

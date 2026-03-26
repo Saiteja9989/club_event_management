@@ -105,7 +105,6 @@ export default function LeaderMemberships() {
   }, [activeTab, searchTerm]);
 
   const handleApprove = async (requestId) => {
-    if (!window.confirm('Approve this membership request?')) return;
     setActionLoading(true);
     try {
       await clubsApi.reviewRequest(requestId, { action: 'approve' });
@@ -123,7 +122,6 @@ export default function LeaderMemberships() {
   };
 
   const handleReject = async (requestId) => {
-    if (!window.confirm('Reject this request? Cannot be undone.')) return;
     setActionLoading(true);
     try {
       await clubsApi.reviewRequest(requestId, { action: 'reject' });
@@ -149,8 +147,6 @@ export default function LeaderMemberships() {
       });
       return;
     }
-    if (!window.confirm('Remove this member? Cannot be undone.')) return;
-
     setActionLoading(true);
     try {
       await clubsApi.removeMember(clubId, userId);

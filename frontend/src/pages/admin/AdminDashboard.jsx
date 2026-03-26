@@ -94,7 +94,7 @@ export default function AdminDashboard() {
 
           <button
             onClick={fetchDashboard}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg border bg-white text-sm font-semibold hover:bg-muted transition"
+            className="flex items-center gap-2 px-4 py-2 rounded-lg border bg-card text-sm font-semibold hover:bg-muted transition"
           >
             <RefreshCw className="h-4 w-4" />
             Refresh Data
@@ -171,7 +171,7 @@ export default function AdminDashboard() {
             <SectionTitle title="Recent Activity" />
           </div>
 
-          <div className="bg-white rounded-2xl border p-6 space-y-6">
+          <div className="bg-card rounded-2xl border p-6 space-y-6">
             {recentActivity.length ? (
               recentActivity.slice(0, 5).map((item, idx) => (
                 <div
@@ -215,8 +215,10 @@ function SectionTitle({ title }) {
 function StatCard({ title, value, icon, trend, urgent, danger }) {
   return (
     <div
-      className={`rounded-2xl border p-6 bg-white transition hover:shadow-md ${
-        urgent ? "border-amber-200 bg-amber-50/40" : ""
+      className={`rounded-2xl border p-6 transition hover:shadow-md ${
+        urgent
+          ? "border-amber-200 bg-amber-50/40 dark:border-amber-800 dark:bg-amber-900/20"
+          : "bg-card"
       }`}
     >
       <div className="flex justify-between items-start mb-4">
@@ -227,8 +229,8 @@ function StatCard({ title, value, icon, trend, urgent, danger }) {
           <span
             className={`text-xs font-bold px-2 py-1 rounded-lg ${
               danger
-                ? "bg-rose-100 text-rose-600"
-                : "bg-emerald-100 text-emerald-600"
+                ? "bg-rose-100 text-rose-600 dark:bg-rose-900/30 dark:text-rose-400"
+                : "bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400"
             }`}
           >
             {trend}
@@ -245,8 +247,8 @@ function StatCard({ title, value, icon, trend, urgent, danger }) {
 
 function ActionCard({ title, description, link, linkText, highlight }) {
   const colors = {
-    amber: "border-amber-200 bg-amber-50/40",
-    rose: "border-rose-200 bg-rose-50/40",
+    amber: "border-amber-200 bg-amber-50/40 dark:border-amber-800 dark:bg-amber-900/20",
+    rose: "border-rose-200 bg-rose-50/40 dark:border-rose-800 dark:bg-rose-900/20",
   };
 
   return (

@@ -321,7 +321,7 @@ export default function BrowseEvents() {
                         variant="outline"
                         size="lg"
                         className="flex-1"
-                        onClick={() => navigate(`/events/${event._id}`)}
+                        onClick={() => navigate(`/student/events/${event._id}`)}
                       >
                         View Details
                       </Button>

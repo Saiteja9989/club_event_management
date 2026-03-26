@@ -14,6 +14,17 @@ import {
 } from '@/components/ui/table';
 import { Card, CardContent } from '@/components/ui/card';
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog';
+import {
   RefreshCw,
   Search,
   CheckCircle2,
@@ -21,8 +32,10 @@ import {
   AlertCircle,
   Loader2,
   UserPlus,
+  MessageSquare,
 } from 'lucide-react';
 import { useToast } from "@/components/ui/useToast";
+import { useNavigate } from 'react-router-dom';
 import clubsApi from '../../api/clubsApi';
 
 // Simple hash function to generate consistent color per club name
@@ -47,6 +60,7 @@ const getAvatarColor = (name) => {
 
 export default function StudentClubs() {
   const { toast } = useToast();
+  const navigate = useNavigate();
 
   const [availableToJoin, setAvailableToJoin] = useState([]);
   const [pending, setPending] = useState([]);
@@ -88,8 +102,6 @@ export default function StudentClubs() {
   };
 
   const handleRequestJoin = async (clubId, clubName) => {
-    if (!window.confirm(`Send join request to "${clubName}"?`)) return;
-
     setActionLoading(true);
     setError('');
     setSuccess('');
@@ -240,13 +252,27 @@ export default function StudentClubs() {
                           <span className="text-muted-foreground">
                             {club.memberCount} members
                           </span>
-                          <Button
-                            size="sm"
-                            onClick={() => handleRequestJoin(club._id, club.name)}
-                            disabled={actionLoading}
-                          >
-                            Request to Join
-                          </Button>
+                          <AlertDialog>
+                            <AlertDialogTrigger asChild>
+                              <Button size="sm" disabled={actionLoading}>
+                                Request to Join
+                              </Button>
+                            </AlertDialogTrigger>
+                            <AlertDialogContent>
+                              <AlertDialogHeader>
+                                <AlertDialogTitle>Send Join Request</AlertDialogTitle>
+                                <AlertDialogDescription>
+                                  Send a membership request to <strong>{club.name}</strong>? A club leader will review your request.
+                                </AlertDialogDescription>
+                              </AlertDialogHeader>
+                              <AlertDialogFooter>
+                                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                <AlertDialogAction onClick={() => handleRequestJoin(club._id, club.name)}>
+                                  Send Request
+                                </AlertDialogAction>
+                              </AlertDialogFooter>
+                            </AlertDialogContent>
+                          </AlertDialog>
                         </div>
                       </CardContent>
                     </Card>
@@ -294,9 +320,20 @@ export default function StudentClubs() {
                           <TableCell>{club.leader?.name || 'N/A'}</TableCell>
                           <TableCell>{club.memberCount}</TableCell>
                           <TableCell className="text-right">
-                            <div className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-emerald-100 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-500/30">
-                              <span className="size-1.5 rounded-full bg-emerald-500 mr-1.5"></span>
-                              Member
+                            <div className="flex items-center justify-end gap-2">
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="gap-1.5 text-xs"
+                                onClick={() => navigate(`/club/${club._id}/chat`)}
+                              >
+                                <MessageSquare className="h-3.5 w-3.5" />
+                                Open Chat
+                              </Button>
+                              <div className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-emerald-100 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-500/30">
+                                <span className="size-1.5 rounded-full bg-emerald-500 mr-1.5"></span>
+                                Member
+                              </div>
                             </div>
                           </TableCell>
                         </TableRow>

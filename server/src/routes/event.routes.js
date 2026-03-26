@@ -8,6 +8,7 @@ const router = express.Router();
 const { protect } = require('../middlewares/auth.middleware');
 const { leaderOnly, adminOnly, studentOnly } = require('../middlewares/role.middleware');
 const eventController = require('../controllers/event.controller');
+const feedbackController = require('../controllers/feedback.controller');
 const multer = require('multer');
 
 // Multer for poster upload (in-memory → S3)
@@ -37,14 +38,28 @@ router.get('/registered', protect, studentOnly, eventController.getRegisteredEve
 // Student only - list their attended past events
 router.get('/attended', protect, studentOnly, eventController.getAttendedEvents); // Returns past attended events
 
+// Leader only - update an event they created
+router.patch('/:eventId', protect, leaderOnly, upload.single('poster'), eventController.updateEvent);
+
 // Leader only - mark attendance using scanned QR
 router.post('/:eventId/attendance', protect, leaderOnly, eventController.markAttendance); // Validates QR and marks attendance
 
 router.get('/:eventId/attended-students', protect, leaderOnly, eventController.getAttendedStudents);
 
+// Student only - get certificate data for an attended event
+router.get('/:eventId/certificate', protect, studentOnly, eventController.getCertificateData);
+
+// Feedback routes
+router.post('/:eventId/feedback', protect, studentOnly, feedbackController.submitFeedback);
+router.get('/:eventId/feedback/summary', protect, feedbackController.getFeedbackSummary);
+router.get('/:eventId/feedback/mine', protect, studentOnly, feedbackController.getMyFeedback);
+router.get('/:eventId/feedback', protect, feedbackController.getEventFeedback);
+
 router.get(
   "/reminders", eventController.getEventsForReminders
 );
 
+// Student only - get full event details (must be after all named routes)
+router.get('/:eventId', protect, studentOnly, eventController.getEventById);
 
 module.exports = router;

@@ -5,6 +5,7 @@
 const express = require('express');
 const router = express.Router();
 const authController = require('../controllers/auth.controller');
+const { protect } = require('../middlewares/auth.middleware');
 
 // Public - anyone can register as a student
 router.post('/register', authController.register);       // Creates new student account
@@ -17,5 +18,8 @@ router.post('/forgot-password', authController.forgotPassword);
 
 // Public - reset password using token
 router.post('/reset-password/:token', authController.resetPassword);
+
+// Protected - update own profile (any authenticated user)
+router.patch('/update-profile', protect, authController.updateProfile);
 
 module.exports = router;

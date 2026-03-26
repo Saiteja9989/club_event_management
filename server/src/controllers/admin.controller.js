@@ -89,6 +89,10 @@ exports.getReports = async (req, res) => {
           : moment().month(6).startOf('month').toDate();
         end = now.toDate();
         break;
+      case 'last30days':
+        start = moment().subtract(30, 'days').toDate();
+        end = now.toDate();
+        break;
       case 'thisYear':
         start = now.startOf('year').toDate();
         end = now.endOf('year').toDate();
@@ -268,6 +272,19 @@ const recentActivity = await Promise.all([
     ]);
 
     // ────────────────────────────────────────────────
+    // 9. Top 5 Events by Registration Count
+    // ────────────────────────────────────────────────
+    const topEvents = await EventRegistration.aggregate([
+      { $match: { ...dateFilter, ...clubFilter } },
+      { $group: { _id: '$event', count: { $sum: 1 } } },
+      { $lookup: { from: 'events', localField: '_id', foreignField: '_id', as: 'event' } },
+      { $unwind: '$event' },
+      { $project: { title: '$event.title', date: '$event.date', count: 1 } },
+      { $sort: { count: -1 } },
+      { $limit: 5 },
+    ]);
+
+    // ────────────────────────────────────────────────
     // Final Response
     // ────────────────────────────────────────────────
     res.json({
@@ -277,6 +294,7 @@ const recentActivity = await Promise.all([
       registrationsTrend,
       recentActivity,
       lowActivityClubs,
+      topEvents,
     });
   } catch (err) {
     console.error('Admin reports error:', err);

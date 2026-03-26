@@ -4,15 +4,22 @@ import DashboardLayout from '../../components/layout/DashboardLayout';
 import adminApi from '../../api/adminApi';
 import clubsApi from '../../api/clubsApi';
 import { useToast } from "../../components/ui/useToast";
+import ConfirmDialog from '../../components/common/ConfirmDialog';
+import jsPDF from 'jspdf';
+import * as XLSX from 'xlsx';
 
 export default function ManageUsers() {
   const { toast } = useToast();
+
+  const [removeClubDialog, setRemoveClubDialog] = useState({ open: false, clubId: null });
 
   const [users, setUsers] = useState([]);
   const [filteredUsers, setFilteredUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [roleFilter, setRoleFilter] = useState('All');
+  const [statusFilter, setStatusFilter] = useState('All'); // All / Active / Inactive
+  const [filterPanelOpen, setFilterPanelOpen] = useState(false);
   const [page, setPage] = useState(1);
   const usersPerPage = 10;
 
@@ -32,6 +39,21 @@ export default function ManageUsers() {
   const [eventStatusFilter, setEventStatusFilter] = useState('All');
   const [eventPage, setEventPage] = useState(1);
   const eventsPerPage = 8;
+
+  // Add New User modal
+  const [addUserOpen, setAddUserOpen] = useState(false);
+  const [addUserForm, setAddUserForm] = useState({ name: '', email: '', rollNumber: '', password: '', role: 'student' });
+  const [addUserSaving, setAddUserSaving] = useState(false);
+
+  // Edit Profile modal (inside detail modal)
+  const [editProfileOpen, setEditProfileOpen] = useState(false);
+  const [editProfileForm, setEditProfileForm] = useState({ name: '', email: '', rollNumber: '' });
+  const [editProfileSaving, setEditProfileSaving] = useState(false);
+
+  // Reset Password modal (inside detail modal)
+  const [resetPwOpen, setResetPwOpen] = useState(false);
+  const [newPassword, setNewPassword] = useState('');
+  const [resetPwSaving, setResetPwSaving] = useState(false);
 
   useEffect(() => {
     fetchUsers();
@@ -54,9 +76,15 @@ export default function ManageUsers() {
       result = result.filter((u) => u.role?.toLowerCase() === roleFilter.toLowerCase());
     }
 
+    if (statusFilter === 'Active') {
+      result = result.filter((u) => u.isActive !== false);
+    } else if (statusFilter === 'Inactive') {
+      result = result.filter((u) => u.isActive === false);
+    }
+
     setFilteredUsers(result);
     setPage(1);
-  }, [users, search, roleFilter]);
+  }, [users, search, roleFilter, statusFilter]);
 
   const usersTotalPages = Math.ceil(filteredUsers.length / usersPerPage);
   const paginatedUsers = filteredUsers.slice(
@@ -117,6 +145,8 @@ export default function ManageUsers() {
     setEventSearch('');
     setEventStatusFilter('All');
     setEventPage(1);
+    setEditProfileOpen(false);
+    setResetPwOpen(false);
     setDetailsOpen(true);
     await fetchUserDetails(user._id);
   };
@@ -141,8 +171,11 @@ export default function ManageUsers() {
     }
   };
 
-  const handleRemoveFromClub = async (clubId) => {
-    if (!window.confirm('Remove user from this club?')) return;
+  const handleRemoveFromClub = (clubId) => {
+    setRemoveClubDialog({ open: true, clubId });
+  };
+
+  const doRemoveFromClub = async (clubId) => {
     try {
       await clubsApi.removeMember(clubId, selectedUser._id);
       toast({
@@ -159,6 +192,247 @@ export default function ManageUsers() {
     }
   };
 
+  // ── Add New User ──────────────────────────────────────────
+  const handleAddUser = async () => {
+    if (!addUserForm.name.trim() || !addUserForm.email.trim() || !addUserForm.password.trim()) {
+      toast({ variant: 'destructive', description: 'Name, email and password are required.' });
+      return;
+    }
+    setAddUserSaving(true);
+    try {
+      await adminApi.createUser(addUserForm);
+      toast({ title: 'Success', description: 'User created successfully.' });
+      setAddUserOpen(false);
+      setAddUserForm({ name: '', email: '', rollNumber: '', password: '', role: 'student' });
+      await fetchUsers();
+    } catch (err) {
+      toast({ variant: 'destructive', description: err.response?.data?.message || 'Failed to create user.' });
+    } finally {
+      setAddUserSaving(false);
+    }
+  };
+
+  // ── Edit Profile (from detail modal) ──────────────────────
+  const handleOpenEditProfile = () => {
+    setEditProfileForm({
+      name: selectedUser.name || '',
+      email: selectedUser.email || '',
+      rollNumber: selectedUser.rollNumber || '',
+    });
+    setEditProfileOpen(true);
+    setResetPwOpen(false);
+  };
+
+  const handleSaveEditProfile = async () => {
+    setEditProfileSaving(true);
+    try {
+      const res = await adminApi.updateUser(selectedUser._id, editProfileForm);
+      toast({ title: 'Success', description: 'Profile updated.' });
+      // Refresh detail view
+      setSelectedUser((prev) => ({ ...prev, ...res.data.user }));
+      // Also update the main users list
+      setUsers((prev) => prev.map((u) => u._id === selectedUser._id ? { ...u, ...res.data.user } : u));
+      setEditProfileOpen(false);
+    } catch (err) {
+      toast({ variant: 'destructive', description: err.response?.data?.message || 'Failed to update profile.' });
+    } finally {
+      setEditProfileSaving(false);
+    }
+  };
+
+  // ── Reset Password (from detail modal) ────────────────────
+  const handleOpenResetPw = () => {
+    setNewPassword('');
+    setResetPwOpen(true);
+    setEditProfileOpen(false);
+  };
+
+  const handleResetPassword = async () => {
+    if (!newPassword || newPassword.length < 6) {
+      toast({ variant: 'destructive', description: 'Password must be at least 6 characters.' });
+      return;
+    }
+    setResetPwSaving(true);
+    try {
+      await adminApi.resetUserPassword(selectedUser._id, { newPassword });
+      toast({ title: 'Success', description: 'Password reset successfully.' });
+      setResetPwOpen(false);
+      setNewPassword('');
+    } catch (err) {
+      toast({ variant: 'destructive', description: err.response?.data?.message || 'Failed to reset password.' });
+    } finally {
+      setResetPwSaving(false);
+    }
+  };
+
+  // ── Export CSV ────────────────────────────────────────────
+  const handleExport = () => {
+    const rows = filteredUsers.map((u) => ({
+      Name: u.name,
+      Email: u.email,
+      'Roll Number': u.rollNumber || 'N/A',
+      Role: u.role,
+      Clubs: u.joinedClubs?.length || 0,
+      Status: u.isActive !== false ? 'Active' : 'Inactive',
+      'Last Login': u.lastLogin ? new Date(u.lastLogin).toLocaleString('en-IN') : 'Never',
+      'Joined On': u.createdAt ? new Date(u.createdAt).toLocaleDateString('en-IN') : 'N/A',
+    }));
+    const ws = XLSX.utils.json_to_sheet(rows);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Users');
+    XLSX.writeFile(wb, `users_export_${new Date().toISOString().slice(0, 10)}.xlsx`);
+    toast({ description: 'Users exported successfully.' });
+  };
+
+  // ── Generate Per-User PDF Report ──────────────────────────
+  const handleGenerateReport = () => {
+    if (!selectedUser) return;
+    const doc = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'a4' });
+    const W = doc.internal.pageSize.getWidth();
+    let y = 50;
+
+    // Header band
+    doc.setFillColor(67, 56, 202);
+    doc.rect(0, 0, W, 80, 'F');
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(22);
+    doc.setFont('helvetica', 'bold');
+    doc.text('ClubHub — User Report', 40, 35);
+    doc.setFontSize(11);
+    doc.setFont('helvetica', 'normal');
+    doc.text(`Generated: ${new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' })}`, 40, 58);
+    y = 110;
+
+    // Profile section
+    doc.setTextColor(30, 30, 30);
+    doc.setFontSize(16);
+    doc.setFont('helvetica', 'bold');
+    doc.text('Profile', 40, y);
+    y += 20;
+    doc.setDrawColor(220, 220, 220);
+    doc.line(40, y, W - 40, y);
+    y += 16;
+
+    const profileRows = [
+      ['Name', selectedUser.name],
+      ['Email', selectedUser.email],
+      ['Roll Number', selectedUser.rollNumber || 'N/A'],
+      ['Role', selectedUser.role?.toUpperCase()],
+      ['Status', selectedUser.isActive !== false ? 'Active' : 'Inactive'],
+      ['Account Created', selectedUser.createdAt ? new Date(selectedUser.createdAt).toLocaleDateString('en-IN') : 'N/A'],
+      ['Last Login', selectedUser.lastLogin ? new Date(selectedUser.lastLogin).toLocaleString('en-IN') : 'Never'],
+    ];
+
+    doc.setFontSize(11);
+    profileRows.forEach(([label, value]) => {
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(80, 80, 80);
+      doc.text(`${label}:`, 40, y);
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(30, 30, 30);
+      doc.text(String(value ?? 'N/A'), 180, y);
+      y += 22;
+    });
+
+    y += 14;
+    // Clubs section
+    doc.setFontSize(16);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(30, 30, 30);
+    doc.text('Club Memberships', 40, y);
+    y += 20;
+    doc.setDrawColor(220, 220, 220);
+    doc.line(40, y, W - 40, y);
+    y += 16;
+
+    const clubs = selectedUser.joinedClubs || [];
+    if (clubs.length === 0) {
+      doc.setFont('helvetica', 'italic');
+      doc.setFontSize(11);
+      doc.setTextColor(120, 120, 120);
+      doc.text('No club memberships.', 40, y);
+      y += 22;
+    } else {
+      // Table header
+      doc.setFillColor(245, 245, 250);
+      doc.rect(40, y - 14, W - 80, 20, 'F');
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(10);
+      doc.setTextColor(60, 60, 60);
+      doc.text('Club Name', 48, y);
+      doc.text('Joined', W - 160, y);
+      y += 14;
+      doc.setFont('helvetica', 'normal');
+      clubs.forEach((club) => {
+        doc.setTextColor(30, 30, 30);
+        doc.setFontSize(10);
+        doc.text(club.name || 'Unknown', 48, y);
+        const joinedDate = club.joinedAt ? new Date(club.joinedAt).toLocaleDateString('en-IN') : 'N/A';
+        doc.text(joinedDate, W - 160, y);
+        y += 18;
+        if (y > 760) { doc.addPage(); y = 50; }
+      });
+    }
+
+    y += 14;
+    // Events section
+    if (y > 680) { doc.addPage(); y = 50; }
+    doc.setFontSize(16);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(30, 30, 30);
+    doc.text('Event Participation', 40, y);
+    y += 20;
+    doc.setDrawColor(220, 220, 220);
+    doc.line(40, y, W - 40, y);
+    y += 16;
+
+    const allEvents = [
+      ...(selectedUser.upcomingEvents || []).map((e) => ({ ...e, attended: false })),
+      ...(selectedUser.attendedEvents || []).map((e) => ({ ...e, attended: true })),
+      ...(selectedUser.events || []),
+    ];
+
+    if (allEvents.length === 0) {
+      doc.setFont('helvetica', 'italic');
+      doc.setFontSize(11);
+      doc.setTextColor(120, 120, 120);
+      doc.text('No event participation.', 40, y);
+    } else {
+      doc.setFillColor(245, 245, 250);
+      doc.rect(40, y - 14, W - 80, 20, 'F');
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(10);
+      doc.setTextColor(60, 60, 60);
+      doc.text('Event Title', 48, y);
+      doc.text('Date', W - 200, y);
+      doc.text('Attendance', W - 100, y);
+      y += 14;
+      allEvents.forEach((event) => {
+        if (y > 760) { doc.addPage(); y = 50; }
+        doc.setFont('helvetica', 'normal');
+        doc.setTextColor(30, 30, 30);
+        doc.setFontSize(10);
+        const title = event.title ? (event.title.length > 40 ? event.title.slice(0, 38) + '…' : event.title) : 'N/A';
+        doc.text(title, 48, y);
+        const dateStr = event.date ? new Date(event.date).toLocaleDateString('en-IN') : 'N/A';
+        doc.text(dateStr, W - 200, y);
+        doc.setTextColor(event.attended ? 22 : 200, event.attended ? 163 : 40, event.attended ? 74 : 40);
+        doc.text(event.attended ? 'Present' : 'Absent', W - 100, y);
+        y += 18;
+      });
+    }
+
+    // Footer
+    doc.setTextColor(160, 160, 160);
+    doc.setFontSize(9);
+    doc.setFont('helvetica', 'italic');
+    doc.text('ClubHub — Confidential Admin Report', 40, 820);
+
+    const safeName = (selectedUser.name || 'user').replace(/[^a-zA-Z0-9]/g, '_').slice(0, 20);
+    doc.save(`Report_${safeName}.pdf`);
+    toast({ description: 'Report downloaded.' });
+  };
+
   // Filtered & paginated clubs
   const getFilteredClubs = () => {
     let clubs = selectedUser?.joinedClubs || [];
@@ -169,7 +443,7 @@ export default function ManageUsers() {
     const total = clubs.length;
     const start = (clubPage - 1) * clubsPerPage;
     const paginated = clubs.slice(start, start + clubsPerPage);
-    return { paginated, total, totalPages: Math.ceil(total / clubsPerPage) };
+    return { paginated, total, totalPages: Math.ceil(total / clubsPerPage) || 1 };
   };
 
   // Filtered & paginated events
@@ -186,7 +460,7 @@ export default function ManageUsers() {
     const total = events.length;
     const start = (eventPage - 1) * eventsPerPage;
     const paginated = events.slice(start, start + eventsPerPage);
-    return { paginated, total, totalPages: Math.ceil(total / eventsPerPage) };
+    return { paginated, total, totalPages: Math.ceil(total / eventsPerPage) || 1 };
   };
 
   return (
@@ -203,20 +477,57 @@ export default function ManageUsers() {
             </p>
           </div>
           <div className="flex gap-3">
-            <button className="flex items-center gap-2 px-5 py-2.5 bg-white dark:bg-[#1c192b] border border-[#dedce5] dark:border-[#2d2a3d] rounded-lg text-sm font-semibold hover:bg-[#f6f6f8] dark:hover:bg-[#141121] transition-colors">
+            <button
+              onClick={() => setFilterPanelOpen((v) => !v)}
+              className={`flex items-center gap-2 px-5 py-2.5 bg-white dark:bg-[#1c192b] border rounded-lg text-sm font-semibold hover:bg-[#f6f6f8] dark:hover:bg-[#141121] transition-colors ${filterPanelOpen ? 'border-primary text-primary' : 'border-[#dedce5] dark:border-[#2d2a3d]'}`}
+            >
               <span className="material-symbols-outlined text-lg">filter_list</span>
-              Filter
+              Filter {statusFilter !== 'All' && <span className="ml-1 px-1.5 py-0.5 text-xs bg-primary text-white rounded-full">1</span>}
             </button>
-            <button className="flex items-center gap-2 px-5 py-2.5 bg-white dark:bg-[#1c192b] border border-[#dedce5] dark:border-[#2d2a3d] rounded-lg text-sm font-semibold hover:bg-[#f6f6f8] dark:hover:bg-[#141121] transition-colors">
+            <button
+              onClick={handleExport}
+              className="flex items-center gap-2 px-5 py-2.5 bg-white dark:bg-[#1c192b] border border-[#dedce5] dark:border-[#2d2a3d] rounded-lg text-sm font-semibold hover:bg-[#f6f6f8] dark:hover:bg-[#141121] transition-colors"
+            >
               <span className="material-symbols-outlined text-lg">download</span>
               Export
             </button>
-            <button className="flex items-center gap-2 bg-primary hover:bg-primary/90 text-white px-6 py-2.5 rounded-lg text-sm font-bold shadow-md transition-all">
+            <button
+              onClick={() => { setAddUserForm({ name: '', email: '', rollNumber: '', password: '', role: 'student' }); setAddUserOpen(true); }}
+              className="flex items-center gap-2 bg-primary hover:bg-primary/90 text-white px-6 py-2.5 rounded-lg text-sm font-bold shadow-md transition-all"
+            >
               <span className="material-symbols-outlined">person_add</span>
               Add New User
             </button>
           </div>
         </div>
+
+        {/* Filter Panel */}
+        {filterPanelOpen && (
+          <div className="mb-4 p-4 rounded-xl bg-white dark:bg-[#1c192b] border border-primary/30 shadow-sm flex flex-wrap items-center gap-4">
+            <p className="text-sm font-bold text-[#131117] dark:text-white">Status Filter:</p>
+            {['All', 'Active', 'Inactive'].map((opt) => (
+              <button
+                key={opt}
+                onClick={() => setStatusFilter(opt)}
+                className={`px-4 py-1.5 rounded-full text-sm font-semibold border transition-colors ${
+                  statusFilter === opt
+                    ? 'bg-primary text-white border-primary'
+                    : 'bg-white dark:bg-[#141121] border-[#dedce5] dark:border-[#2d2a3d] text-[#131117] dark:text-white hover:border-primary'
+                }`}
+              >
+                {opt}
+              </button>
+            ))}
+            {statusFilter !== 'All' && (
+              <button
+                onClick={() => setStatusFilter('All')}
+                className="ml-auto text-xs text-[#6b6487] hover:text-red-500 transition-colors"
+              >
+                Clear filter
+              </button>
+            )}
+          </div>
+        )}
 
         {/* Search & Role Filter */}
         <div className="flex flex-col md:flex-row items-center gap-4 mb-8 p-4 rounded-xl bg-white dark:bg-[#1c192b] border border-[#dedce5] dark:border-[#2d2a3d] shadow-sm">
@@ -425,6 +736,68 @@ export default function ManageUsers() {
           </div>
         </div>
 
+        {/* ──────────────────────────────────────────────────── */}
+        {/* ADD NEW USER MODAL                                   */}
+        {/* ──────────────────────────────────────────────────── */}
+        {addUserOpen && (
+          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+            <div className="bg-white dark:bg-[#1c192b] rounded-xl shadow-2xl max-w-md w-full p-8">
+              <div className="flex items-center justify-between mb-6">
+                <h2 className="text-xl font-bold text-[#131117] dark:text-white">Add New User</h2>
+                <button onClick={() => setAddUserOpen(false)} className="text-[#6b6487] hover:text-[#131117] dark:hover:text-white transition-colors">
+                  <span className="material-symbols-outlined text-2xl">close</span>
+                </button>
+              </div>
+              <div className="space-y-4">
+                {[
+                  { label: 'Full Name *', key: 'name', type: 'text', placeholder: 'Enter full name' },
+                  { label: 'Email *', key: 'email', type: 'email', placeholder: 'Enter email' },
+                  { label: 'Roll Number', key: 'rollNumber', type: 'text', placeholder: 'e.g. 20BCS001' },
+                  { label: 'Password *', key: 'password', type: 'password', placeholder: 'Min. 6 characters' },
+                ].map(({ label, key, type, placeholder }) => (
+                  <div key={key}>
+                    <label className="block text-xs font-bold text-[#6b6487] dark:text-[#a19db8] uppercase tracking-wider mb-1">{label}</label>
+                    <input
+                      type={type}
+                      className="w-full px-4 py-2.5 bg-[#f6f6f8] dark:bg-[#141121] border border-[#dedce5] dark:border-[#2d2a3d] rounded-lg text-sm focus:ring-2 focus:ring-primary/50 outline-none"
+                      placeholder={placeholder}
+                      value={addUserForm[key]}
+                      onChange={(e) => setAddUserForm((f) => ({ ...f, [key]: e.target.value }))}
+                    />
+                  </div>
+                ))}
+                <div>
+                  <label className="block text-xs font-bold text-[#6b6487] dark:text-[#a19db8] uppercase tracking-wider mb-1">Role</label>
+                  <select
+                    className="w-full px-4 py-2.5 bg-[#f6f6f8] dark:bg-[#141121] border border-[#dedce5] dark:border-[#2d2a3d] rounded-lg text-sm focus:ring-2 focus:ring-primary/50 outline-none"
+                    value={addUserForm.role}
+                    onChange={(e) => setAddUserForm((f) => ({ ...f, role: e.target.value }))}
+                  >
+                    <option value="student">Student</option>
+                    <option value="leader">Leader</option>
+                    <option value="admin">Admin</option>
+                  </select>
+                </div>
+              </div>
+              <div className="flex justify-end gap-3 mt-7">
+                <button
+                  onClick={() => setAddUserOpen(false)}
+                  className="px-5 py-2.5 rounded-lg border border-[#dedce5] dark:border-[#2d2a3d] text-sm font-bold hover:bg-gray-50 dark:hover:bg-[#141121] transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleAddUser}
+                  disabled={addUserSaving}
+                  className="px-5 py-2.5 rounded-lg bg-primary text-white text-sm font-bold hover:bg-primary/90 disabled:opacity-50 transition-colors"
+                >
+                  {addUserSaving ? 'Creating…' : 'Create User'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* ──────────────────────────────────────────────── */}
         {/* USER DETAILS MODAL - WITH PAGINATION & SEARCH */}
         {/* ──────────────────────────────────────────────── */}
@@ -469,41 +842,115 @@ export default function ManageUsers() {
                     </div>
                   </div>
 
-                  <div className="space-y-6">
-                    <div className="border-b border-[#e5e7eb] dark:border-[#2d2a45] pb-3">
-                      <p className="text-[#6b6487] text-xs font-semibold uppercase tracking-wider mb-1">Roll Number</p>
-                      <p className="text-[#131117] dark:text-white font-medium">{selectedUser.rollNumber || 'N/A'}</p>
+                  {/* Edit Profile inline form */}
+                  {editProfileOpen ? (
+                    <div className="space-y-3 mb-6">
+                      <p className="text-xs font-bold text-[#6b6487] dark:text-[#a19db8] uppercase tracking-wider">Edit Profile</p>
+                      {[
+                        { label: 'Name', key: 'name', type: 'text' },
+                        { label: 'Email', key: 'email', type: 'email' },
+                        { label: 'Roll Number', key: 'rollNumber', type: 'text' },
+                      ].map(({ label, key, type }) => (
+                        <div key={key}>
+                          <label className="text-xs text-[#6b6487] dark:text-[#a19db8]">{label}</label>
+                          <input
+                            type={type}
+                            className="w-full mt-0.5 px-3 py-2 bg-white dark:bg-[#141121] border border-[#dedce5] dark:border-[#2d2a3d] rounded-lg text-sm focus:ring-2 focus:ring-primary/50 outline-none"
+                            value={editProfileForm[key]}
+                            onChange={(e) => setEditProfileForm((f) => ({ ...f, [key]: e.target.value }))}
+                          />
+                        </div>
+                      ))}
+                      <div className="flex gap-2 pt-1">
+                        <button
+                          onClick={handleSaveEditProfile}
+                          disabled={editProfileSaving}
+                          className="flex-1 bg-primary text-white py-2 rounded-lg text-sm font-bold hover:bg-primary/90 disabled:opacity-50 transition-colors"
+                        >
+                          {editProfileSaving ? 'Saving…' : 'Save'}
+                        </button>
+                        <button
+                          onClick={() => setEditProfileOpen(false)}
+                          className="flex-1 border border-[#dedce5] dark:border-[#2d2a3d] py-2 rounded-lg text-sm font-bold hover:bg-gray-50 dark:hover:bg-[#141121] transition-colors"
+                        >
+                          Cancel
+                        </button>
+                      </div>
                     </div>
-                    <div className="border-b border-[#e5e7eb] dark:border-[#2d2a45] pb-3">
-                      <p className="text-[#6b6487] text-xs font-semibold uppercase tracking-wider mb-1">Department</p>
-                      <p className="text-[#131117] dark:text-white font-medium">
-                        {selectedUser.department || 'N/A'}
-                      </p>
+                  ) : resetPwOpen ? (
+                    <div className="space-y-3 mb-6">
+                      <p className="text-xs font-bold text-[#6b6487] dark:text-[#a19db8] uppercase tracking-wider">Reset Password</p>
+                      <div>
+                        <label className="text-xs text-[#6b6487] dark:text-[#a19db8]">New Password</label>
+                        <input
+                          type="password"
+                          className="w-full mt-0.5 px-3 py-2 bg-white dark:bg-[#141121] border border-[#dedce5] dark:border-[#2d2a3d] rounded-lg text-sm focus:ring-2 focus:ring-primary/50 outline-none"
+                          placeholder="Min. 6 characters"
+                          value={newPassword}
+                          onChange={(e) => setNewPassword(e.target.value)}
+                        />
+                      </div>
+                      <div className="flex gap-2 pt-1">
+                        <button
+                          onClick={handleResetPassword}
+                          disabled={resetPwSaving}
+                          className="flex-1 bg-primary text-white py-2 rounded-lg text-sm font-bold hover:bg-primary/90 disabled:opacity-50 transition-colors"
+                        >
+                          {resetPwSaving ? 'Saving…' : 'Reset'}
+                        </button>
+                        <button
+                          onClick={() => setResetPwOpen(false)}
+                          className="flex-1 border border-[#dedce5] dark:border-[#2d2a3d] py-2 rounded-lg text-sm font-bold hover:bg-gray-50 dark:hover:bg-[#141121] transition-colors"
+                        >
+                          Cancel
+                        </button>
+                      </div>
                     </div>
-                    <div className="border-b border-[#e5e7eb] dark:border-[#2d2a45] pb-3">
-                      <p className="text-[#6b6487] text-xs font-semibold uppercase tracking-wider mb-1">Email</p>
-                      <p className="text-[#131117] dark:text-white font-medium">{selectedUser.email}</p>
+                  ) : (
+                    <div className="space-y-6">
+                      <div className="border-b border-[#e5e7eb] dark:border-[#2d2a45] pb-3">
+                        <p className="text-[#6b6487] text-xs font-semibold uppercase tracking-wider mb-1">Roll Number</p>
+                        <p className="text-[#131117] dark:text-white font-medium">{selectedUser.rollNumber || 'N/A'}</p>
+                      </div>
+                      <div className="border-b border-[#e5e7eb] dark:border-[#2d2a45] pb-3">
+                        <p className="text-[#6b6487] text-xs font-semibold uppercase tracking-wider mb-1">Department</p>
+                        <p className="text-[#131117] dark:text-white font-medium">
+                          {selectedUser.department || 'N/A'}
+                        </p>
+                      </div>
+                      <div className="border-b border-[#e5e7eb] dark:border-[#2d2a45] pb-3">
+                        <p className="text-[#6b6487] text-xs font-semibold uppercase tracking-wider mb-1">Email</p>
+                        <p className="text-[#131117] dark:text-white font-medium">{selectedUser.email}</p>
+                      </div>
+                      <div>
+                        <p className="text-[#6b6487] text-xs font-semibold uppercase tracking-wider mb-1">Account Created</p>
+                        <p className="text-[#131117] dark:text-white font-medium">
+                          {new Date(selectedUser.createdAt).toLocaleDateString('en-GB', {
+                            day: '2-digit',
+                            month: 'short',
+                            year: 'numeric'
+                          })}
+                        </p>
+                      </div>
                     </div>
-                    <div>
-                      <p className="text-[#6b6487] text-xs font-semibold uppercase tracking-wider mb-1">Account Created</p>
-                      <p className="text-[#131117] dark:text-white font-medium">
-                        {new Date(selectedUser.createdAt).toLocaleDateString('en-GB', {
-                          day: '2-digit',
-                          month: 'short',
-                          year: 'numeric'
-                        })}
-                      </p>
-                    </div>
-                  </div>
+                  )}
 
-                  <div className="mt-10 flex flex-col gap-3">
-                    <button className="w-full bg-primary text-white py-3 rounded-lg font-bold text-sm hover:bg-primary/90 transition-colors">
-                      Edit Profile
-                    </button>
-                    <button className="w-full bg-white dark:bg-[#2d2a45] border border-[#e5e7eb] dark:border-[#2d2a45] text-[#131117] dark:text-white py-3 rounded-lg font-bold text-sm hover:bg-gray-50 dark:hover:bg-[#2d2a45]/50 transition-colors">
-                      Reset Password
-                    </button>
-                  </div>
+                  {!editProfileOpen && !resetPwOpen && (
+                    <div className="mt-10 flex flex-col gap-3">
+                      <button
+                        onClick={handleOpenEditProfile}
+                        className="w-full bg-primary text-white py-3 rounded-lg font-bold text-sm hover:bg-primary/90 transition-colors"
+                      >
+                        Edit Profile
+                      </button>
+                      <button
+                        onClick={handleOpenResetPw}
+                        className="w-full bg-white dark:bg-[#2d2a45] border border-[#e5e7eb] dark:border-[#2d2a45] text-[#131117] dark:text-white py-3 rounded-lg font-bold text-sm hover:bg-gray-50 dark:hover:bg-[#2d2a45]/50 transition-colors"
+                      >
+                        Reset Password
+                      </button>
+                    </div>
+                  )}
                 </aside>
 
                 {/* Right - Clubs & Events with Pagination & Search */}
@@ -515,9 +962,6 @@ export default function ManageUsers() {
                         <span className="material-symbols-outlined text-primary">groups</span>
                         Club Memberships ({selectedUser.joinedClubs?.length || 0})
                       </h4>
-                      <button className="text-primary text-sm font-bold hover:underline whitespace-nowrap">
-                        View All
-                      </button>
                     </div>
 
                     {/* Club Controls */}
@@ -623,9 +1067,6 @@ export default function ManageUsers() {
                         <span className="material-symbols-outlined text-primary">event_available</span>
                         Event Participation ({selectedUser.events?.length || 0})
                       </h4>
-                      <button className="text-primary text-sm font-bold hover:underline whitespace-nowrap">
-                        View History
-                      </button>
                     </div>
 
                     {/* Event Controls */}
@@ -749,7 +1190,11 @@ export default function ManageUsers() {
                 >
                   Close View
                 </button>
-                <button className="px-6 py-2.5 bg-primary text-white rounded-lg font-bold hover:bg-primary/90 transition-colors">
+                <button
+                  onClick={handleGenerateReport}
+                  className="px-6 py-2.5 bg-primary text-white rounded-lg font-bold hover:bg-primary/90 transition-colors flex items-center gap-2"
+                >
+                  <span className="material-symbols-outlined text-lg">picture_as_pdf</span>
                   Generate Report
                 </button>
               </div>
@@ -783,6 +1228,16 @@ export default function ManageUsers() {
           </div>
         )}
       </div>
+
+      <ConfirmDialog
+        open={removeClubDialog.open}
+        onOpenChange={(open) => setRemoveClubDialog((s) => ({ ...s, open }))}
+        title="Remove from Club"
+        description="Remove this user from the club? They will lose access to club resources."
+        confirmLabel="Remove"
+        confirmClassName="bg-red-600 hover:bg-red-700 text-white"
+        onConfirm={() => doRemoveFromClub(removeClubDialog.clubId)}
+      />
     </DashboardLayout>
   );
 }

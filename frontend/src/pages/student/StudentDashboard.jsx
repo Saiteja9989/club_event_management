@@ -21,10 +21,12 @@ import {
 } from 'lucide-react';
 import studentApi from '../../api/studentApi';
 import { useAuth } from '../../context/AuthContext';
+import { useTranslation } from 'react-i18next';
 
 export default function StudentDashboard() {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const { t } = useTranslation();
 
   const [data, setData] = useState({
     myClubs: 0,
@@ -75,8 +77,8 @@ export default function StudentDashboard() {
     return () => clearTimeout(timeoutId);
   }, []);
 
-  const handleViewEvent = () => navigate(`/student/my-events`);
-  const handleBrowseClubs = () => navigate('/clubs');
+  const handleViewEvent = () => navigate('/student/my-events');
+  const handleBrowseClubs = () => navigate('/student/clubs');
   const handleBrowseEvents = () => navigate('/student/events');
 
   // Helper to get activity icon & color
@@ -96,7 +98,7 @@ export default function StudentDashboard() {
   };
 
   return (
-    <DashboardLayout title="Student Dashboard">
+    <DashboardLayout title={t('student.dashboard.title')}>
       <div className="min-h-screen bg-background-light dark:bg-background-dark">
         {/* Main Content */}
         <main className="flex-1 max-w-[1200px] mx-auto px-6 py-8 space-y-10">
@@ -104,7 +106,7 @@ export default function StudentDashboard() {
           <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
             <div>
               <h1 className="text-4xl md:text-5xl font-black tracking-tight text-foreground">
-                Welcome back, {user?.name?.split(' ')[0] || 'Student'}!
+                {t('student.dashboard.welcome')}, {user?.name?.split(' ')[0] || 'Student'}!
               </h1>
               <p className="text-lg text-muted-foreground mt-2">
                 {new Date().toLocaleDateString('en-US', {
@@ -119,9 +121,9 @@ export default function StudentDashboard() {
               variant="outline"
               size="lg"
               className="border-primary text-primary hover:bg-primary/10"
-              onClick={() => navigate('/profile')}
+              onClick={() => navigate('/student/profile')}
             >
-              View Profile
+              {t('student.profile.edit_profile')}
             </Button>
           </div>
 
@@ -147,7 +149,7 @@ export default function StudentDashboard() {
                     <div className="flex items-center justify-between mb-4">
                       <div className="flex items-center gap-3">
                         <Users className="h-6 w-6 text-primary" />
-                        <p className="text-lg font-semibold">My Clubs</p>
+                        <p className="text-lg font-semibold">{t('student.dashboard.my_clubs')}</p>
                       </div>
                     </div>
                     <p className="text-4xl font-black">{data.myClubs}</p>
@@ -163,7 +165,7 @@ export default function StudentDashboard() {
                     <div className="flex items-center justify-between mb-4">
                       <div className="flex items-center gap-3">
                         <Ticket className="h-6 w-6 text-primary" />
-                        <p className="text-lg font-semibold">Registered Events</p>
+                        <p className="text-lg font-semibold">{t('student.dashboard.registered_events')}</p>
                       </div>
                     </div>
                     <p className="text-4xl font-black">{data.registeredEvents}</p>
@@ -179,12 +181,12 @@ export default function StudentDashboard() {
                     <div className="flex items-center justify-between mb-4">
                       <div className="flex items-center gap-3">
                         <Calendar className="h-6 w-6 text-primary" />
-                        <p className="text-lg font-semibold">Upcoming Events</p>
+                        <p className="text-lg font-semibold">{t('student.dashboard.upcoming_events')}</p>
                       </div>
                     </div>
                     <p className="text-4xl font-black">{data.upcomingEvents}</p>
                     <div className="flex items-center gap-2 mt-2 text-muted-foreground text-sm font-medium">
-                      No change
+                      —
                     </div>
                   </CardContent>
                 </Card>
@@ -194,7 +196,7 @@ export default function StudentDashboard() {
                     <div className="flex items-center justify-between mb-4">
                       <div className="flex items-center gap-3">
                         <CheckCircle className="h-6 w-6 text-primary" />
-                        <p className="text-lg font-semibold">Attendance Rate</p>
+                        <p className="text-lg font-semibold">{t('student.dashboard.attendance_rate')}</p>
                       </div>
                     </div>
                     <p className="text-4xl font-black">{data.attendanceRate || 0}%</p>
@@ -211,20 +213,20 @@ export default function StudentDashboard() {
                 {/* Upcoming Events */}
                 <div className="lg:col-span-2 space-y-6">
                   <div className="flex items-center justify-between">
-                    <h2 className="text-2xl font-bold tracking-tight">Upcoming Events</h2>
+                    <h2 className="text-2xl font-bold tracking-tight">{t('student.dashboard.upcoming_section')}</h2>
                     <Button variant="ghost" onClick={handleBrowseEvents}>
-                      See all events <ArrowRight className="ml-2 h-4 w-4" />
+                      {t('student.dashboard.browse_events')} <ArrowRight className="ml-2 h-4 w-4" />
                     </Button>
                   </div>
 
                   {data.upcomingEvents === 0 ? (
                     <Card className="p-10 text-center border-dashed">
                       <Calendar className="h-16 w-16 mx-auto text-muted-foreground/70 mb-4" />
-                      <h3 className="text-xl font-medium">No upcoming events yet</h3>
+                      <h3 className="text-xl font-medium">{t('student.dashboard.no_upcoming')}</h3>
                       <p className="text-muted-foreground mt-2 mb-6">
                         Join events from your clubs or browse open events to get started!
                       </p>
-                      <Button onClick={handleBrowseEvents}>Browse Events</Button>
+                      <Button onClick={handleBrowseEvents}>{t('student.dashboard.browse_events')}</Button>
                     </Card>
                   ) : (
                     <div className="grid md:grid-cols-2 gap-6">
@@ -285,12 +287,12 @@ export default function StudentDashboard() {
 
                 {/* Recent Activity – limited to 4 */}
                 <div className="space-y-6">
-                  <h2 className="text-2xl font-bold tracking-tight">Recent Activity</h2>
+                  <h2 className="text-2xl font-bold tracking-tight">{t('student.dashboard.recent_activity')}</h2>
                   <Card className="border border-border/50">
                     <CardContent className="p-0 divide-y divide-border/50">
                       {data.recentActivity.length === 0 ? (
                         <div className="p-8 text-center text-muted-foreground">
-                          No recent activity yet
+                          {t('student.dashboard.no_activity')}
                         </div>
                       ) : (
                         data.recentActivity.slice(0, 4).map((activity, idx) => (
@@ -322,10 +324,10 @@ export default function StudentDashboard() {
                 <div className="relative z-10 flex flex-col md:flex-row items-center justify-between gap-8">
                   <div className="text-center md:text-left">
                     <h2 className="text-3xl md:text-4xl font-bold mb-4">
-                      Ready to explore more?
+                      {t('student.dashboard.explore_banner')}
                     </h2>
                     <p className="text-primary-foreground/90 max-w-xl text-lg">
-                      Join new student organizations and broaden your horizons this semester. Over 50+ active clubs waiting for you.
+                      {t('student.dashboard.explore_desc')}
                     </p>
                   </div>
                   <Button
@@ -334,7 +336,7 @@ export default function StudentDashboard() {
                     className="bg-white text-primary hover:bg-gray-100 text-lg px-8 py-6 font-bold"
                     onClick={handleBrowseClubs}
                   >
-                    Discover Clubs
+                    {t('student.dashboard.discover_clubs')}
                   </Button>
                 </div>
 
@@ -360,18 +362,3 @@ export default function StudentDashboard() {
   );
 }
 
-// Helper for recent activity icons
-function getActivityIcon(type) {
-  switch (type) {
-    case 'Registered':
-      return <Ticket className="h-5 w-5 text-primary" />;
-    case 'Attended':
-      return <CheckCircle className="h-5 w-5 text-green-500" />;
-    case 'Announcement':
-      return <Bell className="h-5 w-5 text-amber-500" />;
-    case 'Approved':
-      return <CheckCircle className="h-5 w-5 text-green-600" />;
-    default:
-      return <FileText className="h-5 w-5 text-purple-500" />;
-  }
-}

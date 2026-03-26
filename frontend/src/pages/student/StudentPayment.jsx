@@ -5,56 +5,54 @@ import DashboardLayout from '../../components/layout/DashboardLayout';
 import { Button } from '@/components/ui/button';
 import { AlertCircle, Loader2, Calendar, MapPin } from 'lucide-react';
 import paymentApi from '../../api/paymentApi';
-import { toast } from "@/components/ui/useToast";
+import { useToast } from '@/components/ui/useToast';
 import { Separator } from '@/components/ui/separator';
+import { useAuth } from '../../context/AuthContext';
 
 export default function StudentPayment() {
   const { eventId } = useParams();
   const navigate = useNavigate();
+  const { toast } = useToast();
+  const { user } = useAuth();
 
   const [event, setEvent] = useState(null);
+  const [orderId, setOrderId] = useState('');
   const [loading, setLoading] = useState(true);
   const [paying, setPaying] = useState(false);
   const [error, setError] = useState('');
 
   useEffect(() => {
+    const fetchEvent = async () => {
+      try {
+        setLoading(true);
+        setError('');
+        const res = await paymentApi.getEventForPayment(eventId);
+        setEvent(res.data.event);
+      } catch (err) {
+        setError(err.response?.data?.message || 'Unable to load payment details.');
+      } finally {
+        setLoading(false);
+      }
+    };
     fetchEvent();
   }, [eventId]);
 
-  const fetchEvent = async () => {
-    try {
-      setLoading(true);
-      setError('');
-
-      const res = await paymentApi.getEventForPayment(eventId);
-      setEvent(res.data.event);
-    } catch (err) {
-      console.error('Payment fetch error:', err);
-      setError(err.response?.data?.message || 'Unable to load payment details.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const handlePayment = async () => {
     if (paying) return;
-
     setPaying(true);
     setError('');
 
     try {
-      // Step 1: Create Razorpay order
       const orderRes = await paymentApi.createOrder(eventId);
 
-      // Handle already paid/registered
-      if (orderRes.data.alreadyRegistered || orderRes.data.alreadyPaid || orderRes.data.alreadyCompleted) {
-        toast({
-          title: "Already Registered",
-          description: "You have already paid and registered for this event.",
-        });
+      if (orderRes.data.alreadyRegistered || orderRes.data.alreadyPaid) {
+        toast({ title: 'Already Registered', description: 'You have already paid and registered for this event.' });
         navigate('/student/my-events');
         return;
       }
+
+      const realOrderId = orderRes.data.orderId;
+      setOrderId(realOrderId);
 
       const options = {
         key: orderRes.data.key,
@@ -62,46 +60,32 @@ export default function StudentPayment() {
         currency: 'INR',
         name: 'ClubHub',
         description: event.title,
-        order_id: orderRes.data.orderId,
-        image: 'https://your-logo-url.com/logo.png', // optional
+        order_id: realOrderId,
         handler: async (response) => {
           try {
-            // Step 2: Verify payment
             await paymentApi.verifyPayment({
               razorpay_payment_id: response.razorpay_payment_id,
               razorpay_order_id: response.razorpay_order_id,
               razorpay_signature: response.razorpay_signature,
               eventId,
             });
-
-            // FIX: Success toast + navigate
-            toast({
-              title: "Payment Successful!",
-              description: "You are now registered. QR code generated – check My Events.",
-              variant: "success",
-            });
-
+            toast({ title: 'Payment Successful!', description: 'You are now registered. Check My Events for your QR code.' });
             navigate('/student/my-events');
           } catch (verifyErr) {
-            console.error('Verification failed:', verifyErr);
             setError('Payment verification failed. Please contact support.');
           }
         },
         prefill: {
-          name: 'Student Name',
-          email: 'student@example.com',
-          contact: '9999999999',
+          name: user?.name || '',
+          email: user?.email || '',
         },
         theme: { color: '#195de6' },
-        modal: {
-          ondismiss: () => setPaying(false),
-        },
+        modal: { ondismiss: () => setPaying(false) },
       };
 
       const razorpay = new window.Razorpay(options);
       razorpay.open();
     } catch (err) {
-      console.error('Payment initiation error:', err);
       setError(err.response?.data?.message || 'Failed to initiate payment');
     } finally {
       setPaying(false);
@@ -123,24 +107,13 @@ export default function StudentPayment() {
     return (
       <DashboardLayout title="Payment">
         <div className="max-w-4xl mx-auto px-4 py-8">
-          {/* Breadcrumbs */}
-          <div className="flex items-center gap-2 text-sm text-muted-foreground mb-6">
-            <a href="#" className="hover:text-primary transition-colors">Events</a>
-            <span className="material-symbols-outlined text-sm">chevron_right</span>
-            <span className="font-medium text-foreground">Payment</span>
-          </div>
-
           <div className="rounded-xl border border-red-200 bg-red-50 p-8 text-center space-y-6">
             <AlertCircle className="h-16 w-16 mx-auto text-red-600" />
             <div>
-              <h2 className="text-2xl font-bold text-red-800 mb-2">
-                Oops! Something went wrong
-              </h2>
+              <h2 className="text-2xl font-bold text-red-800 mb-2">Oops! Something went wrong</h2>
               <p className="text-red-700">{error || 'Event not found'}</p>
             </div>
-            <Button onClick={() => navigate('/student/events')}>
-              Back to Events
-            </Button>
+            <Button onClick={() => navigate('/student/events')}>Back to Events</Button>
           </div>
         </div>
       </DashboardLayout>
@@ -150,11 +123,12 @@ export default function StudentPayment() {
   return (
     <DashboardLayout title="Payment">
       <div className="max-w-4xl mx-auto px-4 py-8">
+
         {/* Breadcrumbs */}
         <div className="flex items-center gap-2 text-sm text-muted-foreground mb-6">
-          <a href="#" className="hover:text-primary transition-colors">Events</a>
+          <button onClick={() => navigate('/student/events')} className="hover:text-primary transition-colors">Events</button>
           <span className="material-symbols-outlined text-sm">chevron_right</span>
-          <a href="#" className="hover:text-primary transition-colors">{event.title}</a>
+          <span className="text-foreground">{event.title}</span>
           <span className="material-symbols-outlined text-sm">chevron_right</span>
           <span className="font-medium text-foreground">Payment</span>
         </div>
@@ -162,14 +136,15 @@ export default function StudentPayment() {
         {/* Title */}
         <div className="mb-8">
           <h1 className="text-4xl font-extrabold tracking-tight">Event Payment</h1>
-          <p className="text-muted-foreground mt-1">Order ID: #CH-99231</p>
+          {orderId && (
+            <p className="text-muted-foreground mt-1 text-sm font-mono">Order ID: {orderId}</p>
+          )}
         </div>
 
         {/* Payment Card */}
         <div className="bg-white dark:bg-slate-900 rounded-xl border border-border shadow-sm overflow-hidden">
-          <div className="p-6 border-b border-border flex justify-between items-center">
+          <div className="p-6 border-b border-border">
             <h2 className="text-xl font-bold">{event.title}</h2>
-            <span className="text-sm text-muted-foreground">Order ID: #CH-99231</span>
           </div>
 
           <div className="p-6 space-y-6">
@@ -180,12 +155,10 @@ export default function StudentPayment() {
                   <div>
                     <p className="text-sm text-muted-foreground">Date & Time</p>
                     <p className="font-medium">
-                      {new Date(event.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'long' })}{' '}
-                      • {event.time}
+                      {new Date(event.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'long' })} • {event.time}
                     </p>
                   </div>
                 </div>
-
                 <div className="flex items-center gap-3">
                   <MapPin className="h-5 w-5 text-primary" />
                   <div>
@@ -198,9 +171,7 @@ export default function StudentPayment() {
               <div className="flex flex-col items-end justify-center gap-2">
                 <div className="text-right">
                   <p className="text-sm text-muted-foreground">Amount Due</p>
-                  <p className="text-3xl font-bold text-primary">
-                    ₹{event.price?.toLocaleString('en-IN')}
-                  </p>
+                  <p className="text-3xl font-bold text-primary">₹{event.price?.toLocaleString('en-IN')}</p>
                 </div>
                 <span className="inline-flex px-3 py-1 rounded-full text-xs font-bold bg-primary/10 text-primary">
                   Paid Event
@@ -229,25 +200,21 @@ export default function StudentPayment() {
               </div>
             </div>
 
-            <div className="pt-4">
-              <Button
-                size="lg"
-                className="w-full text-lg font-medium"
-                onClick={handlePayment}
-                disabled={paying}
-              >
+            {error && (
+              <div className="flex items-center gap-2 text-sm text-destructive bg-destructive/10 p-3 rounded-lg">
+                <AlertCircle className="h-4 w-4 shrink-0" />
+                {error}
+              </div>
+            )}
+
+            <div className="pt-2">
+              <Button size="lg" className="w-full text-lg font-medium" onClick={handlePayment} disabled={paying}>
                 {paying ? (
-                  <>
-                    <Loader2 className="h-5 w-5 mr-2 animate-spin" />
-                    Processing...
-                  </>
+                  <><Loader2 className="h-5 w-5 mr-2 animate-spin" />Processing...</>
                 ) : (
-                  <>
-                    Pay ₹{event.price?.toLocaleString('en-IN')} Securely
-                  </>
+                  <>Pay ₹{event.price?.toLocaleString('en-IN')} Securely</>
                 )}
               </Button>
-
               <p className="text-center text-xs text-muted-foreground mt-3">
                 Secured by Razorpay • 100% safe & encrypted
               </p>
@@ -255,7 +222,6 @@ export default function StudentPayment() {
           </div>
         </div>
 
-        {/* Back */}
         <div className="flex justify-center mt-8">
           <Button variant="ghost" onClick={() => navigate('/student/events')}>
             ← Back to Events

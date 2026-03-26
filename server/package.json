@@ -23,6 +23,7 @@
     "mongoose": "^9.1.4",
     "multer": "^2.0.2",
     "qrcode": "^1.5.4",
-    "razorpay": "^2.9.6"
+    "razorpay": "^2.9.6",
+    "socket.io": "^4.8.3"
   }
 }

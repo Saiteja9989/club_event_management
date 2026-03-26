@@ -18,13 +18,18 @@ import StudentClubs from './pages/student/StudentClubs.jsx'
 import StudentEvents from './pages/student/StudentEvents.jsx'
 import StudentMyevents from './pages/student/StudentMyEvents.jsx'
 import StudentPayment from "./pages/student/StudentPayment";
+import StudentProfile from "./pages/student/StudentProfile";
+import StudentEventDetail from "./pages/student/StudentEventDetail";
+import ClubChat from "./pages/ClubChat";
 import { ProtectedRoute } from './components/ProtectedRoute';
 import Reports from './pages/admin/Reports.jsx'
 import { Toaster } from "./components/ui/toaster";
+import { SocketProvider } from './context/SocketContext';
 
 function App() {
   return (
     <BrowserRouter>
+    <SocketProvider>
       <Routes>
         {/* Public */}
         <Route path="/" element={<HomePage />} />
@@ -159,10 +164,39 @@ function App() {
         />
 
 
+        <Route
+          path="/student/profile"
+          element={
+            <ProtectedRoute allowedRoles={['student']}>
+              <StudentProfile />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/student/events/:eventId"
+          element={
+            <ProtectedRoute allowedRoles={['student']}>
+              <StudentEventDetail />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* Club Chat — accessible by student and leader */}
+        <Route
+          path="/club/:clubId/chat"
+          element={
+            <ProtectedRoute allowedRoles={['student', 'leader']}>
+              <ClubChat />
+            </ProtectedRoute>
+          }
+        />
+
         {/* 404 */}
         <Route path="*" element={<div className="min-h-screen flex items-center justify-center text-foreground">404 - Page Not Found</div>} />
       </Routes>
       <Toaster />
+    </SocketProvider>
     </BrowserRouter>
   );
 }

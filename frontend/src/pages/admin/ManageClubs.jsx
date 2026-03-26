@@ -1,12 +1,15 @@
 // src/pages/admin/ManageClubs.jsx
 import React, { useState, useEffect } from 'react';
 import DashboardLayout from '../../components/layout/DashboardLayout';
-import { useToast } from "../../components/ui/useToast"; // ← added
+import { useToast } from "../../components/ui/useToast";
 import clubsApi from '../../api/clubsApi';
 import adminApi from '../../api/adminApi';
+import ConfirmDialog from '../../components/common/ConfirmDialog';
 
 export default function ManageClubs() {
-  const { toast } = useToast(); // ← added
+  const { toast } = useToast();
+
+  const [confirmDialog, setConfirmDialog] = useState({ open: false, title: '', description: '', onConfirm: null, confirmLabel: 'Confirm', confirmClassName: '' });
 
   const [clubs, setClubs] = useState([]);
   const [filteredClubs, setFilteredClubs] = useState([]);
@@ -135,9 +138,18 @@ export default function ManageClubs() {
     }
   };
 
-  const handleRemoveMember = async (userId) => {
-    if (!window.confirm('Remove this member from the club?')) return;
+  const handleRemoveMember = (userId) => {
+    setConfirmDialog({
+      open: true,
+      title: 'Remove Member',
+      description: 'Remove this member from the club? This cannot be undone.',
+      confirmLabel: 'Remove',
+      confirmClassName: 'bg-red-600 hover:bg-red-700 text-white',
+      onConfirm: () => doRemoveMember(userId),
+    });
+  };
 
+  const doRemoveMember = async (userId) => {
     setActionLoading(true);
     try {
       await clubsApi.removeMember(selectedClub._id, userId);
@@ -159,10 +171,20 @@ export default function ManageClubs() {
     }
   };
 
-  const handleChangeRole = async (userId, isCurrentLeader) => {
+  const handleChangeRole = (userId, isCurrentLeader) => {
     const newRole = isCurrentLeader ? 'Member' : 'Leader';
-    if (!window.confirm(`Change role to ${newRole}?`)) return;
+    setConfirmDialog({
+      open: true,
+      title: 'Change Role',
+      description: `Change this member's role to ${newRole}?`,
+      confirmLabel: `Set as ${newRole}`,
+      confirmClassName: 'bg-primary hover:bg-primary/90 text-white',
+      onConfirm: () => doChangeRole(userId, isCurrentLeader),
+    });
+  };
 
+  const doChangeRole = async (userId, isCurrentLeader) => {
+    const newRole = isCurrentLeader ? 'Member' : 'Leader';
     setActionLoading(true);
     try {
       await clubsApi.changeMemberRole(selectedClub._id, userId, newRole);
@@ -911,6 +933,16 @@ export default function ManageClubs() {
           </div>
         )}
       </div>
+
+      <ConfirmDialog
+        open={confirmDialog.open}
+        onOpenChange={(open) => setConfirmDialog((s) => ({ ...s, open }))}
+        title={confirmDialog.title}
+        description={confirmDialog.description}
+        confirmLabel={confirmDialog.confirmLabel}
+        confirmClassName={confirmDialog.confirmClassName}
+        onConfirm={confirmDialog.onConfirm}
+      />
     </DashboardLayout>
   );
 }

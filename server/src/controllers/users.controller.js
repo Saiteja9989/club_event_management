@@ -4,6 +4,7 @@ const Club = require('../models/club.model');
 const EventRegistration = require('../models/eventRegistration.model');
 const MembershipRequest = require('../models/membershipRequest.model');
 const Event = require('../models/event.model');
+const { emitNotification } = require('../utils/socket');
 
 
 /**
@@ -142,6 +143,88 @@ exports.deleteUser = async (req, res) => {
   } catch (error) {
     console.error('Delete user error:', error);
     res.status(500).json({ success: false, message: 'Server error' });
+  }
+};
+
+/**
+ * Create a new user (admin only)
+ */
+exports.createUser = async (req, res) => {
+  try {
+    const { name, email, rollNumber, password, role } = req.body;
+    if (!name || !email || !password) {
+      return res.status(400).json({ message: 'name, email and password are required' });
+    }
+    const existing = await User.findOne({ email });
+    if (existing) return res.status(400).json({ message: 'Email already in use' });
+    const user = await User.create({
+      name: name.trim(),
+      email: email.trim().toLowerCase(),
+      rollNumber: rollNumber?.trim() || undefined,
+      password,
+      role: role || 'student',
+      isActive: true,
+    });
+    // Welcome notification to the newly created user
+    emitNotification(user._id, {
+      type: 'account_created',
+      title: 'Welcome to ClubHub!',
+      message: `Your account has been created by an admin. You can now log in.`,
+      link: '/',
+    });
+
+    res.status(201).json({ success: true, user: { _id: user._id, name: user.name, email: user.email, role: user.role } });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
+/**
+ * Update user profile (admin only)
+ */
+exports.updateUser = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { name, email, rollNumber } = req.body;
+    if (!name && !email && rollNumber === undefined) {
+      return res.status(400).json({ message: 'Nothing to update' });
+    }
+    if (email) {
+      const existing = await User.findOne({ email, _id: { $ne: userId } });
+      if (existing) return res.status(400).json({ message: 'Email already in use' });
+    }
+    const updates = {};
+    if (name) updates.name = name.trim();
+    if (email) updates.email = email.trim().toLowerCase();
+    if (rollNumber !== undefined) updates.rollNumber = rollNumber.trim();
+    const user = await User.findByIdAndUpdate(userId, updates, { new: true }).select('name email rollNumber role');
+    if (!user) return res.status(404).json({ message: 'User not found' });
+    res.json({ success: true, user });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
+/**
+ * Reset a user's password (admin only)
+ */
+exports.resetUserPassword = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { newPassword } = req.body;
+    if (!newPassword || newPassword.length < 6) {
+      return res.status(400).json({ message: 'Password must be at least 6 characters' });
+    }
+    const user = await User.findById(userId);
+    if (!user) return res.status(404).json({ message: 'User not found' });
+    user.password = newPassword;
+    await user.save();
+    res.json({ success: true, message: 'Password reset successfully' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Server error' });
   }
 };
 

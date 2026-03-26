@@ -6,6 +6,7 @@ const QRCode = require("qrcode");
 const crypto = require("crypto");
 const axios = require("axios");
 const { s3, bucketName } = require("../config/s3");
+const { emitNotification } = require("../utils/socket");
 
 /**
  * Leader creates a new event
@@ -28,7 +29,7 @@ exports.createEvent = async (req, res) => {
     } = req.body;
 
     const leaderId = req.user._id;
-    const clubId = req.user.clubId; // ✅ CORRECT FIELD
+    const clubId = req.user.clubId;
 
     if (!clubId) {
       return res.status(400).json({
@@ -73,10 +74,22 @@ exports.createEvent = async (req, res) => {
         : null,
       poster: posterUrl,
       createdBy: leaderId,
-      club: clubId, // ✅ REQUIRED FIELD NOW SET
+      club: clubId,
       clubName: club.name,
       status: "pending",
     });
+
+    // Notify all admins that a new event needs review
+    User.find({ role: 'admin' }).select('_id').lean().then((admins) => {
+      admins.forEach((admin) => {
+        emitNotification(admin._id, {
+          type: 'event_pending_review',
+          title: 'New Event Pending Review',
+          message: `"${event.title}" by ${club.name} is waiting for your approval.`,
+          link: '/admin/events',
+        });
+      });
+    }).catch(() => {});
 
     res.status(201).json({
       success: true,
@@ -89,6 +102,56 @@ exports.createEvent = async (req, res) => {
       success: false,
       message: err.message || "Failed to create event",
     });
+  }
+};
+
+/**
+ * Leader updates an existing event they created
+ * Leader only
+ */
+exports.updateEvent = async (req, res) => {
+  try {
+    const { eventId } = req.params;
+    const leaderId = req.user._id;
+
+    const event = await Event.findOne({ _id: eventId, createdBy: leaderId });
+    if (!event) {
+      return res.status(404).json({ success: false, message: "Event not found or not yours" });
+    }
+
+    const { title, description, date, time, venue, visibility, isPaid, price, maxParticipants, registrationDeadline } = req.body;
+
+    if (title) event.title = title.trim();
+    if (description !== undefined) event.description = description;
+    if (date) event.date = new Date(date);
+    if (time) event.time = time;
+    if (venue) event.venue = venue.trim();
+    if (visibility) event.visibility = visibility;
+    if (isPaid !== undefined) event.isPaid = isPaid === "true" || isPaid === true;
+    if (price !== undefined) event.price = event.isPaid ? Number(price) : 0;
+    if (maxParticipants) event.maxParticipants = Number(maxParticipants);
+    if (registrationDeadline) event.registrationDeadline = new Date(registrationDeadline);
+
+    // Handle optional new poster upload
+    if (req.file) {
+      const uploadResult = await s3
+        .upload({
+          Bucket: bucketName,
+          Key: `events/posters/${Date.now()}-${req.file.originalname}`,
+          Body: req.file.buffer,
+          ContentType: req.file.mimetype,
+          ACL: "public-read",
+        })
+        .promise();
+      event.poster = uploadResult.Location;
+    }
+
+    await event.save();
+
+    res.json({ success: true, message: "Event updated successfully.", data: event });
+  } catch (err) {
+    console.error("Update event error:", err);
+    res.status(500).json({ success: false, message: err.message || "Failed to update event" });
   }
 };
 
@@ -238,7 +301,69 @@ exports.reviewEvent = async (req, res) => {
     event.status = action;
     await event.save();
 
+    // Notify the leader who created this event
+    if (event.createdBy) {
+      emitNotification(event.createdBy, {
+        type: action === 'approved' ? 'event_approved' : 'event_rejected',
+        title: action === 'approved' ? 'Event Approved!' : 'Event Rejected',
+        message: `Your event "${event.title}" has been ${action} by admin.`,
+        link: '/leader/events',
+      });
+    }
+
+    // If approved, notify all club members that a new event is available
+    if (action === 'approved' && event.club) {
+      const clubDoc = await Club.findById(event.club).select('members name').lean();
+      if (clubDoc?.members?.length) {
+        const createdByStr = event.createdBy?.toString();
+        clubDoc.members.forEach((memberId) => {
+          // Skip the leader (they already got the approval notification)
+          if (memberId.toString() === createdByStr) return;
+          emitNotification(memberId, {
+            type: 'new_event_available',
+            title: 'New Event Available!',
+            message: `"${event.title}" has been approved and is now open for registration.`,
+            link: '/student/events',
+          });
+        });
+      }
+    }
+
     res.json({ message: `Event ${action}`, event });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Server error" });
+  }
+};
+
+/**
+ * Student views a single event's full details
+ * Student only
+ * Includes registration status for the current student
+ */
+exports.getEventById = async (req, res) => {
+  try {
+    const { eventId } = req.params;
+    const studentId = req.user.id;
+
+    const event = await Event.findById(eventId)
+      .populate({ path: "club", select: "name description leader", populate: { path: "leader", select: "name email" } });
+
+    if (!event || event.status !== "approved") {
+      return res.status(404).json({ message: "Event not found" });
+    }
+
+    const registration = await EventRegistration.findOne({ event: eventId, student: studentId });
+
+    res.json({
+      success: true,
+      event: {
+        ...event.toObject(),
+        seatsLeft: event.maxParticipants ? event.maxParticipants - (event.totalRegistrations || 0) : null,
+        isRegistered: !!registration,
+        attended: registration?.attended || false,
+      },
+    });
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: "Server error" });
@@ -398,8 +523,6 @@ exports.registerForEvent = async (req, res) => {
     const studentId = req.user._id;
     const { eventId } = req.params;
 
-    console.log(`[registerForEvent] Student: ${studentId}, Event: ${eventId}`);
-
     // 1. Check event
     const event = await Event.findById(eventId);
     if (!event || event.status !== "approved") {
@@ -473,7 +596,27 @@ exports.registerForEvent = async (req, res) => {
       qrGeneratedAt: new Date(),
     });
 
-    // 8. Notify n8n (🔥 IMPORTANT PART 🔥)
+    // Notify student: registration confirmed
+    emitNotification(studentId, {
+      type: 'event_registered',
+      title: 'Registration Confirmed!',
+      message: `You are registered for "${event.title}". Your QR ticket is ready.`,
+      link: '/student/my-events',
+    });
+
+    // Notify leader of new registration
+    const eventWithClub = await Event.findById(eventId)
+      .populate({ path: 'club', select: 'leader name' });
+    if (eventWithClub?.club?.leader) {
+      emitNotification(eventWithClub.club.leader, {
+        type: 'new_registration',
+        title: 'New Registration',
+        message: `${req.user.name || 'A student'} registered for "${event.title}".`,
+        link: '/leader/events',
+      });
+    }
+
+    // 9. Notify n8n
     axios
       .post(process.env.N8N_EVENT_REGISTER_WEBHOOK, {
         type: "event_registered",
@@ -613,6 +756,14 @@ exports.markAttendance = async (req, res) => {
       $set: { attendedCount: uniqueAttended.length },
     });
 
+    // Notify the student their attendance was marked
+    emitNotification(studentId, {
+      type: 'attendance_marked',
+      title: 'Attendance Recorded!',
+      message: `Your attendance for "${event.title}" has been successfully marked.`,
+      link: '/student/my-events',
+    });
+
     res.status(200).json({
       success: true,
       message: "Attendance marked successfully",
@@ -620,7 +771,7 @@ exports.markAttendance = async (req, res) => {
       eventTitle: event.title,
       clubName: event.club?.name || "Unknown",
       attendedAt: new Date().toISOString(),
-      attendedCount: uniqueAttended.length, // for frontend reference
+      attendedCount: uniqueAttended.length,
     });
   } catch (err) {
     console.error("Mark attendance error:", err);
@@ -682,6 +833,65 @@ exports.getAttendedStudents = async (req, res) => {
       success: false,
       message: "Server error while fetching attended students",
     });
+  }
+};
+
+/**
+ * Student downloads certificate data for an attended event
+ * Student only
+ * Returns data needed to generate the participation certificate
+ */
+exports.getCertificateData = async (req, res) => {
+  try {
+    const { eventId } = req.params;
+    const studentId = req.user._id;
+
+    // Verify the student actually attended this event
+    const registration = await EventRegistration.findOne({
+      event: eventId,
+      student: studentId,
+      attended: true,
+    });
+
+    if (!registration) {
+      return res.status(403).json({
+        success: false,
+        message: "Certificate not available. Attendance not marked for this event.",
+      });
+    }
+
+    // Fetch event details with club and leader info
+    const event = await Event.findById(eventId).populate({
+      path: "club",
+      select: "name leader",
+      populate: { path: "leader", select: "name" },
+    });
+
+    if (!event) {
+      return res.status(404).json({ success: false, message: "Event not found" });
+    }
+
+    // Fetch student details
+    const student = await User.findById(studentId).select("name rollNumber email");
+
+    res.json({
+      success: true,
+      data: {
+        eventId: event._id,
+        studentName: student.name,
+        rollNumber: student.rollNumber || "N/A",
+        eventTitle: event.title,
+        eventDate: event.date,
+        eventTime: event.time,
+        eventVenue: event.venue,
+        clubName: event.clubName || event.club?.name || "ClubHub",
+        leaderName: event.club?.leader?.name || "Club Leader",
+        attendedAt: registration.attendedAt,
+      },
+    });
+  } catch (err) {
+    console.error("getCertificateData error:", err);
+    res.status(500).json({ success: false, message: "Server error" });
   }
 };
 
