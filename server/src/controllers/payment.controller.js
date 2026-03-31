@@ -7,6 +7,7 @@ const User = require("../models/user.model");
 const QRCode = require("qrcode");
 const { s3, bucketName } = require("../config/s3");
 const { emitNotification } = require("../utils/socket");
+const { sendEmail } = require("../utils/n8nEmail");
 
 exports.getEventForPayment = async (req, res) => {
   try {
@@ -133,6 +134,16 @@ exports.verifyPayment = async (req, res) => {
         qrGeneratedAt: new Date(),
       });
     }
+
+    // Email student payment confirmation
+    const eventDoc = await Event.findById(payment.event).select('title date venue').lean();
+    sendEmail('payment_success', {
+      studentEmail: req.user.email, studentName: req.user.name,
+      eventTitle: eventDoc?.title || '',
+      amount: payment.amount,
+      paymentId: razorpay_payment_id,
+      qrCodeUrl: registration.qrCode || '',
+    });
 
     // Notify student of successful payment + QR ready
     emitNotification(studentId, {

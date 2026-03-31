@@ -6,6 +6,7 @@ const QRCode = require("qrcode");
 const crypto = require("crypto");
 const { s3, bucketName } = require("../config/s3");
 const { emitNotification } = require("../utils/socket");
+const { sendEmail } = require("../utils/n8nEmail");
 
 /**
  * Leader creates a new event
@@ -302,6 +303,20 @@ exports.reviewEvent = async (req, res) => {
 
     // Notify the leader who created this event
     if (event.createdBy) {
+      const leader = await User.findById(event.createdBy).select('name email').lean();
+      if (leader) {
+        if (action === 'approved') {
+          sendEmail('event_approved', {
+            leaderEmail: leader.email, leaderName: leader.name,
+            eventTitle: event.title, eventDate: event.date, venue: event.venue,
+          });
+        } else {
+          sendEmail('event_rejected', {
+            leaderEmail: leader.email, leaderName: leader.name,
+            eventTitle: event.title, rejectionReason: req.body.rejectionReason || '',
+          });
+        }
+      }
       emitNotification(event.createdBy, {
         type: action === 'approved' ? 'event_approved' : 'event_rejected',
         title: action === 'approved' ? 'Event Approved!' : 'Event Rejected',
@@ -615,6 +630,12 @@ exports.registerForEvent = async (req, res) => {
       });
     }
 
+    sendEmail('event_registered', {
+      studentEmail: req.user.email, studentName: req.user.name,
+      eventTitle: event.title, eventDate: event.date,
+      eventTime: event.time, venue: event.venue, qrCodeUrl,
+    });
+
     // Response
     res.status(201).json({
       success: true,
@@ -736,7 +757,15 @@ exports.markAttendance = async (req, res) => {
       $set: { attendedCount: uniqueAttended.length },
     });
 
-    // Notify the student their attendance was marked
+    // Email + notify student
+    const student = await User.findById(studentId).select('name email').lean();
+    if (student) {
+      sendEmail('attendance_marked', {
+        studentEmail: student.email, studentName: student.name,
+        eventTitle: event.title, eventDate: event.date,
+        clubName: event.club?.name || '',
+      });
+    }
     emitNotification(studentId, {
       type: 'attendance_marked',
       title: 'Attendance Recorded!',
