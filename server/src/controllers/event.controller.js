@@ -7,7 +7,6 @@ const crypto = require("crypto");
 const axios = require("axios");
 const { s3, bucketName } = require("../config/s3");
 const { emitNotification } = require("../utils/socket");
-const { eventRegistrationEmail, eventReminderEmail, attendanceConfirmationEmail } = require("../utils/emailTemplates");
 
 /**
  * Leader creates a new event
@@ -617,8 +616,7 @@ exports.registerForEvent = async (req, res) => {
       });
     }
 
-    // 9. Premium registration confirmation email via n8n
-    const clubDoc = event.club ? await Club.findById(event.club).select('name').lean() : null;
+    // 9. Registration confirmation email via n8n
     axios
       .post(process.env.N8N_EVENT_REGISTER_WEBHOOK, {
         type: "event_registered",
@@ -631,17 +629,6 @@ exports.registerForEvent = async (req, res) => {
         eventTime: event.time,
         venue: event.venue,
         qrCodeUrl,
-        subject: `🎟️ You're Registered for ${event.title}!`,
-        htmlBody: eventRegistrationEmail({
-          studentName: req.user.name,
-          eventTitle: event.title,
-          eventDate: event.date,
-          eventTime: event.time,
-          venue: event.venue,
-          clubName: clubDoc?.name || event.clubName,
-          qrCodeUrl,
-          isPaid: false,
-        }),
       })
       .catch((err) => {
         console.error("n8n webhook failed:", err.message);
