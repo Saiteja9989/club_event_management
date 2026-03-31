@@ -6,7 +6,8 @@ const QRCode = require("qrcode");
 const crypto = require("crypto");
 const { s3, bucketName } = require("../config/s3");
 const { emitNotification } = require("../utils/socket");
-const { sendEmail } = require("../utils/n8nEmail");
+const axios = require("axios");
+const n8n = (type, data) => axios.post(process.env.N8N_EMAIL_WEBHOOK, { type, ...data }).catch(err => console.error('n8n email failed:', err.message));
 
 /**
  * Leader creates a new event
@@ -306,12 +307,12 @@ exports.reviewEvent = async (req, res) => {
       const leader = await User.findById(event.createdBy).select('name email').lean();
       if (leader) {
         if (action === 'approved') {
-          sendEmail('event_approved', {
+          n8n('event_approved', {
             leaderEmail: leader.email, leaderName: leader.name,
             eventTitle: event.title, eventDate: event.date, venue: event.venue,
           });
         } else {
-          sendEmail('event_rejected', {
+          n8n('event_rejected', {
             leaderEmail: leader.email, leaderName: leader.name,
             eventTitle: event.title, rejectionReason: req.body.rejectionReason || '',
           });
@@ -630,7 +631,7 @@ exports.registerForEvent = async (req, res) => {
       });
     }
 
-    sendEmail('event_registered', {
+    n8n('event_registered', {
       studentEmail: req.user.email, studentName: req.user.name,
       eventTitle: event.title, eventDate: event.date,
       eventTime: event.time, venue: event.venue, qrCodeUrl,
@@ -760,7 +761,7 @@ exports.markAttendance = async (req, res) => {
     // Email + notify student
     const student = await User.findById(studentId).select('name email').lean();
     if (student) {
-      sendEmail('attendance_marked', {
+      n8n('attendance_marked', {
         studentEmail: student.email, studentName: student.name,
         eventTitle: event.title, eventDate: event.date,
         clubName: event.club?.name || '',

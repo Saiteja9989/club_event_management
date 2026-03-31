@@ -3,7 +3,8 @@ const User = require('../models/user.model');
 const Event = require('../models/event.model');
 const EventRegistration= require('../models/eventRegistration.model')
 const MembershipRequest = require('../models/membershipRequest.model');
-const { sendEmail } = require('../utils/n8nEmail');
+const axios = require('axios');
+const n8n = (type, data) => axios.post(process.env.N8N_EMAIL_WEBHOOK, { type, ...data }).catch(err => console.error('n8n email failed:', err.message));
 const { emitNotification } = require('../utils/socket');
 
 /**
@@ -48,7 +49,7 @@ exports.createClub = async (req, res) => {
       club.members.push(leaderId);
       await club.save();
 
-      sendEmail('leader_appointed', { email: user.email, name: user.name, clubName: club.name });
+      n8n('leader_appointed', { email: user.email, name: user.name, clubName: club.name });
 
       // Socket notification
       emitNotification(user._id, {
@@ -386,7 +387,7 @@ exports.reviewRequest = async (req, res) => {
     await request.save();
 
     if (action === 'approve') {
-      sendEmail('membership_approved', {
+      n8n('membership_approved', {
         email: request.student.email,
         name: request.student.name,
         clubName: request.club.name,
@@ -453,7 +454,7 @@ exports.assignLeader = async (req, res) => {
 
     await club.save();
 
-    sendEmail('leader_appointed', { email: user.email, name: user.name, clubName: club.name });
+    n8n('leader_appointed', { email: user.email, name: user.name, clubName: club.name });
 
     // Socket notification to the newly assigned leader
     emitNotification(user._id, {

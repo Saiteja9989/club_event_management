@@ -1,0 +1,63 @@
+{
+  "name": "ClubHub - Instant Emails",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "clubhub-emails",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "id": "webhook-node",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $input.first().json;\nconst type = body.type;\n\nlet toEmail = '';\nlet subject = '';\nlet html = '';\n\nif (type === 'user_registration') {\n  toEmail = body.email;\n  subject = 'Welcome to ClubHub!';\n  html = `<h2>Hi ${body.name},</h2><p>Welcome to ClubHub! Your account has been created successfully as a <strong>${body.role}</strong>.</p><p>Login to explore clubs and events.</p><br><p>Team ClubHub</p>`;\n\n} else if (type === 'FORGOT_PASSWORD') {\n  toEmail = body.email;\n  subject = 'Reset Your Password - ClubHub';\n  html = `<h2>Hi ${body.name},</h2><p>Click the button below to reset your password. This link expires in 15 minutes.</p><p><a href=\"${body.resetLink}\" style=\"background:#1e3a5f;color:white;padding:10px 20px;border-radius:5px;text-decoration:none;\">Reset Password</a></p><br><p>If you did not request this, ignore this email.</p>`;\n\n} else if (type === 'leader_appointed') {\n  toEmail = body.email;\n  subject = `You are now Leader of ${body.clubName} - ClubHub`;\n  html = `<h2>Congratulations ${body.name}!</h2><p>You have been appointed as the leader of <strong>${body.clubName}</strong> on ClubHub.</p><p>Login to manage your club, approve members, and create events.</p><br><p>Team ClubHub</p>`;\n\n} else if (type === 'membership_approved') {\n  toEmail = body.email;\n  subject = `Membership Approved - ${body.clubName}`;\n  html = `<h2>Hi ${body.name},</h2><p>Your request to join <strong>${body.clubName}</strong> has been approved!</p><p>Login to ClubHub to see upcoming events from your club.</p><br><p>Team ClubHub</p>`;\n\n} else if (type === 'event_approved') {\n  toEmail = body.leaderEmail;\n  subject = `Your Event \"${body.eventTitle}\" is Approved!`;\n  html = `<h2>Hi ${body.leaderName},</h2><p>Great news! Your event <strong>${body.eventTitle}</strong> has been approved by the admin.</p><p><strong>Date:</strong> ${new Date(body.eventDate).toLocaleDateString('en-IN')}<br><strong>Venue:</strong> ${body.venue}</p><p>Students can now register for your event.</p><br><p>Team ClubHub</p>`;\n\n} else if (type === 'event_rejected') {\n  toEmail = body.leaderEmail;\n  subject = `Your Event \"${body.eventTitle}\" was Rejected`;\n  html = `<h2>Hi ${body.leaderName},</h2><p>Unfortunately, your event <strong>${body.eventTitle}</strong> has been rejected.</p>${body.rejectionReason ? `<p><strong>Reason:</strong> ${body.rejectionReason}</p>` : ''}<p>You can update and resubmit the event for review.</p><br><p>Team ClubHub</p>`;\n\n} else if (type === 'event_registered') {\n  toEmail = body.studentEmail;\n  subject = `Registration Confirmed - ${body.eventTitle}`;\n  html = `<h2>Hi ${body.studentName},</h2><p>You have successfully registered for <strong>${body.eventTitle}</strong>!</p><p><strong>Date:</strong> ${new Date(body.eventDate).toLocaleDateString('en-IN')}<br><strong>Venue:</strong> ${body.venue}</p>${body.qrCodeUrl ? `<p>Your QR ticket: <a href=\"${body.qrCodeUrl}\">View QR Code</a></p>` : ''}<br><p>Team ClubHub</p>`;\n\n} else if (type === 'payment_success') {\n  toEmail = body.studentEmail;\n  subject = `Payment Confirmed - ${body.eventTitle}`;\n  html = `<h2>Hi ${body.studentName},</h2><p>Your payment of <strong>&#8377;${body.amount}</strong> for <strong>${body.eventTitle}</strong> was successful!</p><p><strong>Payment ID:</strong> ${body.paymentId}</p>${body.qrCodeUrl ? `<p>Your QR ticket: <a href=\"${body.qrCodeUrl}\">View QR Code</a></p>` : ''}<br><p>Team ClubHub</p>`;\n\n} else if (type === 'attendance_marked') {\n  toEmail = body.studentEmail;\n  subject = `Attendance Marked - ${body.eventTitle}`;\n  html = `<h2>Hi ${body.studentName},</h2><p>Your attendance for <strong>${body.eventTitle}</strong> by <strong>${body.clubName}</strong> has been successfully recorded.</p><p>You can now download your participation certificate from My Events.</p><br><p>Team ClubHub</p>`;\n}\n\nreturn [{ json: { toEmail, subject, html } }];"
+      },
+      "id": "code-node",
+      "name": "Build Email",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [480, 300]
+    },
+    {
+      "parameters": {
+        "fromEmail": "no-reply@clubhub.com",
+        "toEmail": "={{ $json.toEmail }}",
+        "subject": "={{ $json.subject }}",
+        "body": "={{ $json.html }}",
+        "options": {
+          "isBodyHtml": true
+        }
+      },
+      "id": "ses-node",
+      "name": "Send Email",
+      "type": "n8n-nodes-base.awsSes",
+      "typeVersion": 1,
+      "position": [720, 300],
+      "credentials": {
+        "aws": {
+          "name": "AWS SES"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [{ "node": "Build Email", "type": "main", "index": 0 }]
+      ]
+    },
+    "Build Email": {
+      "main": [
+        [{ "node": "Send Email", "type": "main", "index": 0 }]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {}
+}

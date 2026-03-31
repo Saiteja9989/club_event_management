@@ -7,7 +7,8 @@ const User = require("../models/user.model");
 const QRCode = require("qrcode");
 const { s3, bucketName } = require("../config/s3");
 const { emitNotification } = require("../utils/socket");
-const { sendEmail } = require("../utils/n8nEmail");
+const axios = require("axios");
+const n8n = (type, data) => axios.post(process.env.N8N_EMAIL_WEBHOOK, { type, ...data }).catch(err => console.error('n8n email failed:', err.message));
 
 exports.getEventForPayment = async (req, res) => {
   try {
@@ -137,7 +138,7 @@ exports.verifyPayment = async (req, res) => {
 
     // Email student payment confirmation
     const eventDoc = await Event.findById(payment.event).select('title date venue').lean();
-    sendEmail('payment_success', {
+    n8n('payment_success', {
       studentEmail: req.user.email, studentName: req.user.name,
       eventTitle: eventDoc?.title || '',
       amount: payment.amount,
