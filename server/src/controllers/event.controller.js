@@ -618,7 +618,7 @@ exports.registerForEvent = async (req, res) => {
 
     // 9. Registration confirmation email via n8n
     axios
-      .post(process.env.N8N_EVENT_REGISTER_WEBHOOK, {
+      .post(process.env.N8N_PRODUCTION_WEBHOOK_URL, {
         type: "event_registered",
         studentId,
         studentName: req.user.name,
