@@ -4,6 +4,7 @@ const axios = require('axios');
 const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
 const { emitNotification } = require('../utils/socket');
+const { welcomeEmail, passwordResetEmail } = require('../utils/emailTemplates');
 
 /**
  * Register a new student
@@ -34,12 +35,14 @@ exports.register = async (req, res) => {
 
     await user.save();
 
-    // Optional: Send welcome email via n8n webhook
+    // Send premium welcome email via n8n webhook
     axios.post(process.env.N8N_PRODUCTION_WEBHOOK_URL, {
       type: "user_registration",
       email: user.email,
       name: user.name,
       role: user.role,
+      subject: `Welcome to ClubHub, ${user.name}! 🎉`,
+      htmlBody: welcomeEmail({ name: user.name, email: user.email, role: user.role }),
     }).catch(err => console.error("n8n email failed:", err));
 
     // Notify all admins of new registration
@@ -150,12 +153,14 @@ exports.forgotPassword = async (req, res) => {
     // 4️⃣ Reset link
     const resetLink = `${process.env.FRONTEND_URL}/reset-password/${resetToken}`;
 
-    // 5️⃣ Send to n8n
+    // 5️⃣ Send premium password reset email via n8n
     await axios.post(process.env.N8N_PRODUCTION_WEBHOOK_URL, {
       type: 'FORGOT_PASSWORD',
       email: user.email,
       name: user.name,
       resetLink,
+      subject: 'Reset Your ClubHub Password 🔐',
+      htmlBody: passwordResetEmail({ name: user.name, resetLink }),
     });
 
     res.status(200).json({

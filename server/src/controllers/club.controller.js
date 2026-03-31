@@ -5,6 +5,7 @@ const EventRegistration= require('../models/eventRegistration.model')
 const MembershipRequest = require('../models/membershipRequest.model');
 const axios = require('axios');
 const { emitNotification } = require('../utils/socket');
+const { leaderAppointedEmail, membershipApprovedEmail } = require('../utils/emailTemplates');
 
 /**
  * Create a new club
@@ -48,13 +49,15 @@ exports.createClub = async (req, res) => {
       club.members.push(leaderId);
       await club.save();
 
-      // Direct n8n notification (no utils)
+      // Premium leader appointment email via n8n
       axios
         .post(process.env.N8N_PRODUCTION_WEBHOOK_URL, {
           type: "leader_appointed",
           email: user.email,
           name: user.name,
           clubName: club.name,
+          subject: `👑 You're now the Leader of ${club.name} on ClubHub!`,
+          htmlBody: leaderAppointedEmail({ name: user.name, clubName: club.name }),
         })
         .catch((err) => console.error("n8n failed:", err));
 
@@ -453,13 +456,15 @@ exports.assignLeader = async (req, res) => {
 
     await club.save();
 
-    // Notify via n8n
+    // Premium leader appointment email via n8n
     axios
       .post(process.env.N8N_PRODUCTION_WEBHOOK_URL, {
         type: "leader_appointed",
         email: user.email,
         name: user.name,
         clubName: club.name,
+        subject: `👑 You're now the Leader of ${club.name} on ClubHub!`,
+        htmlBody: leaderAppointedEmail({ name: user.name, clubName: club.name }),
       })
       .catch((err) => console.error("n8n failed:", err));
 

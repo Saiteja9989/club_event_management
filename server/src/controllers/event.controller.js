@@ -7,6 +7,7 @@ const crypto = require("crypto");
 const axios = require("axios");
 const { s3, bucketName } = require("../config/s3");
 const { emitNotification } = require("../utils/socket");
+const { eventRegistrationEmail, eventReminderEmail, attendanceConfirmationEmail } = require("../utils/emailTemplates");
 
 /**
  * Leader creates a new event
@@ -616,21 +617,31 @@ exports.registerForEvent = async (req, res) => {
       });
     }
 
-    // 9. Notify n8n
+    // 9. Premium registration confirmation email via n8n
+    const clubDoc = event.club ? await Club.findById(event.club).select('name').lean() : null;
     axios
       .post(process.env.N8N_EVENT_REGISTER_WEBHOOK, {
         type: "event_registered",
         studentId,
         studentName: req.user.name,
         studentEmail: req.user.email,
-
         eventId: event._id,
         eventTitle: event.title,
         eventDate: event.date,
         eventTime: event.time,
         venue: event.venue,
-
         qrCodeUrl,
+        subject: `🎟️ You're Registered for ${event.title}!`,
+        htmlBody: eventRegistrationEmail({
+          studentName: req.user.name,
+          eventTitle: event.title,
+          eventDate: event.date,
+          eventTime: event.time,
+          venue: event.venue,
+          clubName: clubDoc?.name || event.clubName,
+          qrCodeUrl,
+          isPaid: false,
+        }),
       })
       .catch((err) => {
         console.error("n8n webhook failed:", err.message);
@@ -896,33 +907,65 @@ exports.getCertificateData = async (req, res) => {
 };
 
 /**
- * n8n – Fetch approved upcoming events for reminders
+ * n8n – Fetch approved upcoming events with ALL registered students for reminders.
+ * Bug fix: previously returned only createdBy (leader), now returns every registered student.
  **/
-
 exports.getEventsForReminders = async (req, res) => {
   try {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    const now = new Date();
+    // Fetch events happening within the next 48 hours (n8n can filter further)
+    const in48h = new Date(now.getTime() + 48 * 60 * 60 * 1000);
 
     const events = await Event.find({
       status: "approved",
-      date: { $gte: today },
+      date: { $gte: now, $lte: in48h },
     })
-      .populate("createdBy", "name email")
-      .populate("attended", "name email")
-      .select("title date time venue clubName createdBy attended")
+      .select("title date time venue clubName club")
       .lean();
 
-    res.json({
-      success: true,
-      count: events.length,
-      data: events,
+    if (!events.length) {
+      return res.json({ success: true, count: 0, data: [] });
+    }
+
+    const eventIds = events.map((e) => e._id);
+
+    // Fetch all registrations (not yet attended) for these events with student details
+    const registrations = await EventRegistration.find({
+      event: { $in: eventIds },
+      attended: false,           // only send reminder to those who haven't attended yet
+    })
+      .populate("student", "name email")
+      .select("event student qrCode")
+      .lean();
+
+    // Group registered students by event
+    const regMap = {};
+    registrations.forEach((r) => {
+      const eid = r.event.toString();
+      if (!regMap[eid]) regMap[eid] = [];
+      if (r.student) {
+        regMap[eid].push({
+          name: r.student.name,
+          email: r.student.email,
+          qrCodeUrl: r.qrCode || null,
+        });
+      }
     });
+
+    // Build response: each event with its list of registered students to email
+    const data = events.map((event) => ({
+      eventId: event._id,
+      title: event.title,
+      date: event.date,
+      time: event.time,
+      venue: event.venue,
+      clubName: event.clubName || "",
+      registeredStudents: regMap[event._id.toString()] || [],
+    })).filter((e) => e.registeredStudents.length > 0);
+
+    res.json({ success: true, count: data.length, data });
   } catch (err) {
     console.error("getEventsForReminders error:", err);
-    res.status(500).json({
-      success: false,
-      message: "Failed to fetch events for reminders",
-    });
+    res.status(500).json({ success: false, message: "Failed to fetch events for reminders" });
   }
 };
