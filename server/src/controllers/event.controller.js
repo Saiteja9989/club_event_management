@@ -913,12 +913,12 @@ exports.getCertificateData = async (req, res) => {
 exports.getEventsForReminders = async (req, res) => {
   try {
     const now = new Date();
-    // Fetch events happening within the next 48 hours (n8n can filter further)
-    const in48h = new Date(now.getTime() + 48 * 60 * 60 * 1000);
+    // Fetch events in the next 4 days to cover 3-day, 1-day, and day-of reminders
+    const in4days = new Date(now.getTime() + 4 * 24 * 60 * 60 * 1000);
 
     const events = await Event.find({
       status: "approved",
-      date: { $gte: now, $lte: in48h },
+      date: { $gte: now, $lte: in4days },
     })
       .select("title date time venue clubName club")
       .lean();
@@ -932,7 +932,7 @@ exports.getEventsForReminders = async (req, res) => {
     // Fetch all registrations (not yet attended) for these events with student details
     const registrations = await EventRegistration.find({
       event: { $in: eventIds },
-      attended: false,           // only send reminder to those who haven't attended yet
+      attended: false,
     })
       .populate("student", "name email")
       .select("event student qrCode")
@@ -952,16 +952,22 @@ exports.getEventsForReminders = async (req, res) => {
       }
     });
 
-    // Build response: each event with its list of registered students to email
-    const data = events.map((event) => ({
-      eventId: event._id,
-      title: event.title,
-      date: event.date,
-      time: event.time,
-      venue: event.venue,
-      clubName: event.clubName || "",
-      registeredStudents: regMap[event._id.toString()] || [],
-    })).filter((e) => e.registeredStudents.length > 0);
+    const msPerDay = 1000 * 60 * 60 * 24;
+
+    // Build response with daysLeft; only include reminder days: 0, 1, 3
+    const data = events.map((event) => {
+      const daysLeft = Math.round((new Date(event.date) - now) / msPerDay);
+      return {
+        eventId: event._id,
+        title: event.title,
+        date: event.date,
+        time: event.time,
+        venue: event.venue,
+        clubName: event.clubName || "",
+        daysLeft,
+        registeredStudents: regMap[event._id.toString()] || [],
+      };
+    }).filter((e) => e.registeredStudents.length > 0 && [0, 1, 3].includes(e.daysLeft));
 
     res.json({ success: true, count: data.length, data });
   } catch (err) {
