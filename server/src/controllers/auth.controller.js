@@ -1,7 +1,7 @@
 const User = require('../models/user.model');
 const { generateToken } = require('../utils/jwt.util');
 const bcrypt = require('bcryptjs');
-const { sendEmail } = require('../utils/n8nEmail');
+const axios = require('axios');
 const crypto = require('crypto');
 const { emitNotification } = require('../utils/socket');
 
@@ -34,7 +34,7 @@ exports.register = async (req, res) => {
 
     await user.save();
 
-    sendEmail('user_registration', { email: user.email, name: user.name, role: user.role });
+    axios.post(process.env.N8N_EMAIL_WEBHOOK, { type: 'user_registration', email: user.email, name: user.name, role: user.role }).catch(err => console.error('n8n email failed:', err.message));
 
     // Notify all admins of new registration
     User.find({ role: 'admin' }).select('_id').lean().then((admins) => {
@@ -144,7 +144,7 @@ exports.forgotPassword = async (req, res) => {
     // 4️⃣ Reset link
     const resetLink = `${process.env.FRONTEND_URL}/reset-password/${resetToken}`;
 
-    sendEmail('FORGOT_PASSWORD', { email: user.email, name: user.name, resetLink });
+    axios.post(process.env.N8N_EMAIL_WEBHOOK, { type: 'FORGOT_PASSWORD', email: user.email, name: user.name, resetLink }).catch(err => console.error('n8n email failed:', err.message));
 
     res.status(200).json({
       message: 'If the email exists, a reset link has been sent.',
