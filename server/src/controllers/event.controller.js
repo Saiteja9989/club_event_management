@@ -952,10 +952,14 @@ exports.getEventsForReminders = async (req, res) => {
     });
 
     const msPerDay = 1000 * 60 * 60 * 24;
+    // Strip time — compare dates at day level to avoid timezone skew
+    const todayMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate());
 
-    // Build response with daysLeft; only include reminder days: 0, 1, 3
+    // Build response with daysLeft; only include reminder days: 1, 3, 5
     const data = events.map((event) => {
-      const daysLeft = Math.round((new Date(event.date) - now) / msPerDay);
+      const d = new Date(event.date);
+      const eventMidnight = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+      const daysLeft = Math.round((eventMidnight - todayMidnight) / msPerDay);
       return {
         eventId: event._id,
         title: event.title,
