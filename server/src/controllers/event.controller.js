@@ -913,11 +913,11 @@ exports.getEventsForReminders = async (req, res) => {
   try {
     const now = new Date();
     // Fetch events in the next 4 days to cover 3-day, 1-day, and day-of reminders
-    const in4days = new Date(now.getTime() + 4 * 24 * 60 * 60 * 1000);
+    const in6days = new Date(now.getTime() + 6 * 24 * 60 * 60 * 1000);
 
     const events = await Event.find({
       status: "approved",
-      date: { $gte: now, $lte: in4days },
+      date: { $gte: now, $lte: in6days },
     })
       .select("title date time venue clubName club")
       .lean();
@@ -966,7 +966,7 @@ exports.getEventsForReminders = async (req, res) => {
         daysLeft,
         registeredStudents: regMap[event._id.toString()] || [],
       };
-    }).filter((e) => e.registeredStudents.length > 0 && [0, 1, 3].includes(e.daysLeft));
+    }).filter((e) => e.registeredStudents.length > 0 && [1, 3, 5].includes(e.daysLeft));
 
     res.json({ success: true, count: data.length, data });
   } catch (err) {

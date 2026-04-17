@@ -1,0 +1,101 @@
+{
+  "name": "ClubHub - Event Reminders",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 8 * * *"
+            }
+          ]
+        }
+      },
+      "id": "cron-node",
+      "name": "Daily 8AM Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "http://localhost:5000/api/events/reminders",
+        "options": {}
+      },
+      "id": "http-node",
+      "name": "Fetch Reminder Events",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [480, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Flatten: one item per student per event\nconst response = $input.first().json;\n\nif (!response.success || !response.data || response.data.length === 0) {\n  return [];\n}\n\nconst items = [];\nfor (const event of response.data) {\n  for (const student of event.registeredStudents) {\n    items.push({\n      json: {\n        studentName: student.name,\n        studentEmail: student.email,\n        qrCodeUrl: student.qrCodeUrl || null,\n        eventTitle: event.title,\n        eventDate: event.date,\n        eventTime: event.time || '',\n        venue: event.venue,\n        clubName: event.clubName || '',\n        daysLeft: event.daysLeft,\n      }\n    });\n  }\n}\n\nreturn items;"
+      },
+      "id": "flatten-node",
+      "name": "Flatten Students",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [720, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.first().json;\n\nconst daysLeft = item.daysLeft;\nconst brand = '#1a3c6e';\nconst accent = '#2563eb';\nconst text = '#1e293b';\nconst muted = '#64748b';\nconst border = '#e2e8f0';\n\nconst urgencyColor = daysLeft === 1 ? '#dc2626' : daysLeft === 3 ? '#d97706' : '#2563eb';\nconst urgencyLabel = daysLeft === 1 ? 'Tomorrow!' : daysLeft === 3 ? 'In 3 Days' : 'In 5 Days';\nconst urgencyIcon = daysLeft === 1 ? '🚨' : daysLeft === 3 ? '⏰' : '📅';\nconst urgencyBg = daysLeft === 1 ? '#fef2f2' : daysLeft === 3 ? '#fffbeb' : '#f0f4ff';\nconst urgencyBorder = daysLeft === 1 ? '#fecaca' : daysLeft === 3 ? '#fde68a' : '#bfdbfe';\n\nconst fmtDate = new Date(item.eventDate).toLocaleDateString('en-IN', {\n  weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'\n});\n\nconst infoRow = (label, value) =>\n  `<tr><td style=\"padding:6px 0;font-size:14px;color:#64748b;width:130px;\">${label}</td><td style=\"padding:6px 0;font-size:14px;color:#1e293b;font-weight:600;\">${value}</td></tr>`;\n\nconst html = `\n<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n  <meta charset=\"UTF-8\">\n  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n  <title>Event Reminder</title>\n</head>\n<body style=\"margin:0;padding:0;background:#f1f5f9;font-family:'Segoe UI',Arial,sans-serif;\">\n  <table width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" style=\"background:#f1f5f9;padding:40px 0;\">\n    <tr><td align=\"center\">\n      <table width=\"600\" cellpadding=\"0\" cellspacing=\"0\" style=\"max-width:600px;width:100%;background:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.08);\">\n\n        <!-- Header -->\n        <tr>\n          <td style=\"background:linear-gradient(135deg,${urgencyColor} 0%,${daysLeft === 1 ? '#f87171' : daysLeft === 3 ? '#fbbf24' : accent} 100%);padding:40px 48px;text-align:center;\">\n            <div style=\"font-size:44px;margin-bottom:12px;\">${urgencyIcon}</div>\n            <h1 style=\"margin:0;color:#ffffff;font-size:24px;font-weight:700;letter-spacing:-0.5px;\">Event Reminder</h1>\n            <div style=\"display:inline-block;background:rgba(255,255,255,0.2);border-radius:20px;padding:6px 20px;margin-top:12px;\">\n              <span style=\"color:#ffffff;font-size:14px;font-weight:700;letter-spacing:1px;text-transform:uppercase;\">${urgencyLabel}</span>\n            </div>\n            <p style=\"margin:10px 0 0;color:rgba(255,255,255,0.8);font-size:13px;letter-spacing:2px;text-transform:uppercase;\">ClubHub Platform</p>\n          </td>\n        </tr>\n\n        <!-- Body -->\n        <tr>\n          <td style=\"padding:48px;color:${text};\">\n\n            <p style=\"margin:0 0 24px;font-size:22px;font-weight:700;color:${brand};\">Hi ${item.studentName},</p>\n\n            <p style=\"margin:0 0 24px;font-size:15px;line-height:1.7;color:#475569;\">\n              ${daysLeft === 1\n                ? \"This is your <strong>final reminder</strong> — your event is <strong style='color:#dc2626;'>tomorrow!</strong> Make sure you have your QR ticket ready.\"\n                : daysLeft === 3\n                ? \"Just a heads-up — your event is coming up <strong style='color:#d97706;'>in 3 days</strong>. Mark your calendar and get ready!\"\n                : \"Friendly reminder — you have an event registered <strong style='color:#2563eb;'>in 5 days</strong>. Plan ahead and don't miss it!\"}\n            </p>\n\n            <!-- Urgency Banner -->\n            <div style=\"background:${urgencyBg};border:1px solid ${urgencyBorder};border-radius:12px;padding:16px 20px;margin:0 0 28px;text-align:center;\">\n              <span style=\"font-size:16px;font-weight:700;color:${urgencyColor};\">${urgencyIcon} ${urgencyLabel} — ${fmtDate}</span>\n            </div>\n\n            <!-- Event Details -->\n            <div style=\"background:#f8fafc;border:1px solid ${border};border-radius:12px;padding:20px 24px;margin:0 0 28px;\">\n              <p style=\"margin:0 0 12px;font-size:12px;font-weight:700;color:${muted};letter-spacing:1.5px;text-transform:uppercase;\">Event Details</p>\n              <table cellpadding=\"0\" cellspacing=\"0\" style=\"width:100%;\">\n                ${infoRow('Event', `<span style=\"color:${brand};\">${item.eventTitle}</span>`)}\n                ${infoRow('Club', item.clubName || '—')}\n                ${infoRow('Date', fmtDate)}\n                ${item.eventTime ? infoRow('Time', item.eventTime) : ''}\n                ${infoRow('Venue', item.venue)}\n              </table>\n            </div>\n\n            ${item.qrCodeUrl ? `\n            <!-- QR Code -->\n            <div style=\"background:#f0f4ff;border:2px dashed ${accent};border-radius:12px;padding:20px 24px;margin:0 0 28px;text-align:center;\">\n              <p style=\"margin:0 0 4px;font-size:12px;font-weight:700;color:${muted};letter-spacing:1.5px;text-transform:uppercase;\">Your Entry Ticket</p>\n              <p style=\"margin:0 0 16px;font-size:13px;color:#475569;\">Present this QR code at the event entrance</p>\n              <a href=\"${item.qrCodeUrl}\" style=\"display:inline-block;background:${accent};color:#ffffff;text-decoration:none;padding:12px 28px;border-radius:8px;font-size:14px;font-weight:700;\">📲 View QR Ticket</a>\n            </div>` : ''}\n\n            <!-- Checklist -->\n            <div style=\"margin:0 0 28px;\">\n              <p style=\"margin:0 0 12px;font-size:13px;font-weight:700;color:${muted};letter-spacing:1px;text-transform:uppercase;\">Before You Go</p>\n              <table cellpadding=\"0\" cellspacing=\"0\" style=\"width:100%;\">\n                <tr><td style=\"padding:6px 0;\"><span style=\"color:${urgencyColor};font-weight:700;\">✓</span> <span style=\"font-size:14px;color:${text};\">Save the venue: <strong>${item.venue}</strong></span></td></tr>\n                ${item.qrCodeUrl ? `<tr><td style=\"padding:6px 0;\"><span style=\"color:${urgencyColor};font-weight:700;\">✓</span> <span style=\"font-size:14px;color:${text};\">Have your QR ticket ready (digital or printed)</span></td></tr>` : ''}\n                <tr><td style=\"padding:6px 0;\"><span style=\"color:${urgencyColor};font-weight:700;\">✓</span> <span style=\"font-size:14px;color:${text};\">Arrive on time — attendance will be marked at entry</span></td></tr>\n              </table>\n            </div>\n\n            <hr style=\"border:none;border-top:1px solid ${border};margin:28px 0;\"/>\n            <div style=\"text-align:center;\">\n              <a href=\"http://localhost:5173/login\" style=\"display:inline-block;background:${urgencyColor};color:#ffffff;text-decoration:none;padding:14px 32px;border-radius:8px;font-size:15px;font-weight:600;\">View Event Details</a>\n            </div>\n\n          </td>\n        </tr>\n\n        <!-- Footer -->\n        <tr>\n          <td style=\"background:#f8fafc;padding:28px 48px;border-top:1px solid ${border};\">\n            <p style=\"margin:0 0 8px;font-size:15px;font-weight:700;color:${brand};text-align:center;\">ClubHub</p>\n            <p style=\"margin:0;font-size:12px;color:${muted};text-align:center;\">Smart Club & Event Management Platform</p>\n            <p style=\"margin:12px 0 0;font-size:11px;color:#94a3b8;text-align:center;\">This is an automated reminder. You received this because you registered for ${item.eventTitle}.</p>\n          </td>\n        </tr>\n\n      </table>\n    </td></tr>\n  </table>\n</body>\n</html>`;\n\nconst subject = daysLeft === 1\n  ? `🚨 Tomorrow: ${item.eventTitle} — Don't Forget Your QR Ticket!`\n  : daysLeft === 3\n  ? `⏰ 3 Days Left: ${item.eventTitle} is Coming Up!`\n  : `📅 Reminder: ${item.eventTitle} is in 5 Days`;\n\nreturn [{ json: {\n  toEmail: item.studentEmail,\n  fromEmail: 'no-reply@jadavkeshav.tech',\n  subject,\n  html\n} }];"
+      },
+      "id": "build-reminder-node",
+      "name": "Build Reminder Email",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [960, 300]
+    },
+    {
+      "parameters": {
+        "fromEmail": "={{ $json.fromEmail }}",
+        "toEmail": "={{ $json.toEmail }}",
+        "subject": "={{ $json.subject }}",
+        "body": "={{ $json.html }}",
+        "options": {
+          "isBodyHtml": true
+        }
+      },
+      "id": "ses-reminder-node",
+      "name": "Send Reminder Email",
+      "type": "n8n-nodes-base.awsSes",
+      "typeVersion": 1,
+      "position": [1200, 300],
+      "credentials": {
+        "aws": {
+          "name": "AWS (IAM) account"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Daily 8AM Trigger": {
+      "main": [
+        [{ "node": "Fetch Reminder Events", "type": "main", "index": 0 }]
+      ]
+    },
+    "Fetch Reminder Events": {
+      "main": [
+        [{ "node": "Flatten Students", "type": "main", "index": 0 }]
+      ]
+    },
+    "Flatten Students": {
+      "main": [
+        [{ "node": "Build Reminder Email", "type": "main", "index": 0 }]
+      ]
+    },
+    "Build Reminder Email": {
+      "main": [
+        [{ "node": "Send Reminder Email", "type": "main", "index": 0 }]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

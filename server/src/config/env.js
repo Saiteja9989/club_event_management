@@ -16,10 +16,10 @@ const envVarsSchema = Joi.object()
       .description('JWT secret key'),
 
     // n8n Webhook
-    N8N_PRODUCTION_WEBHOOK_URL: Joi.string()
+    N8N_EMAIL_WEBHOOK: Joi.string()
       .uri()
       .required()
-      .description('n8n production webhook URL'),
+      .description('n8n email webhook URL'),
 
     // Razorpay
     RAZORPAY_KEY_ID: Joi.string()
@@ -68,7 +68,7 @@ module.exports = {
   jwtSecret: envVars.JWT_SECRET,
 
   // n8n
-  n8nWebhookUrl: envVars.N8N_PRODUCTION_WEBHOOK_URL,
+  n8nWebhookUrl: envVars.N8N_EMAIL_WEBHOOK,
 
   // Razorpay
   razorpay: {
