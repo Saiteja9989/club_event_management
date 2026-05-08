@@ -8,6 +8,9 @@ const router = express.Router();
 const { protect } = require('../middlewares/auth.middleware');
 const { adminOnly, studentOnly, leaderOnly } = require('../middlewares/role.middleware');
 const clubController = require('../controllers/club.controller');
+const messageController = require('../controllers/message.controller');
+const multer = require('multer');
+const upload = multer({ storage: multer.memoryStorage() });
 
 
 // Admin only - create new club
@@ -44,5 +47,12 @@ router.patch('/my-club', protect, leaderOnly, clubController.updateMyClub);
 
 // NEW: Change role of member in club (promote/demote leader)
 router.patch('/:clubId/members/:userId/role', protect, adminOnly,clubController.changeMemberRole);
+
+// ── Club Chat Routes (members + leaders) ──────────────────────────────────
+router.get('/:clubId/messages', protect, messageController.getMessages);
+router.post('/:clubId/messages', protect, messageController.sendMessage);
+router.post('/:clubId/messages/upload', protect, upload.single('file'), messageController.uploadAttachment);
+router.patch('/:clubId/messages/:messageId/pin', protect, messageController.pinMessage);
+router.patch('/:clubId/messages/:messageId/react', protect, messageController.toggleReaction);
 
 module.exports = router;

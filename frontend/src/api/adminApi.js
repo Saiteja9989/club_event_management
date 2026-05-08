@@ -1,17 +1,6 @@
 // src/api/adminApi.js
 // Admin-only endpoints (stats, reports, users)
-import axios from 'axios';
-
-const API = axios.create({
-  baseURL: 'http://localhost:5000/api',
-});
-
-// Add JWT token automatically to all admin requests
-API.interceptors.request.use((config) => {
-  const token = localStorage.getItem('token');
-  if (token) config.headers.Authorization = `Bearer ${token}`;
-  return config;
-});
+import API from './apiClient';
 
 const adminApi = {
   // GET /api/admin/stats - Basic dashboard stats

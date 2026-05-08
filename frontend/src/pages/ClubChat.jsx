@@ -56,6 +56,7 @@ function isGrouped(messages, index) {
   if (index === 0) return false;
   const prev = messages[index - 1];
   const curr = messages[index];
+  if (!prev.sender || !curr.sender) return false;
   if (prev.sender._id !== curr.sender._id) return false;
   const diff = new Date(curr.createdAt) - new Date(prev.createdAt);
   return diff < 5 * 60 * 1000;
@@ -424,10 +425,10 @@ export default function ClubChat() {
                 <p className="text-sm mt-1">{t('chat.start_conversation')}</p>
               </div>
             ) : (
-              messages.map((msg, idx) => {
+              messages.filter(msg => msg && msg._id).map((msg, idx, arr) => {
                 const isMine = msg.sender?._id === myId || msg.sender?._id?.toString() === myId;
-                const grouped = isGrouped(messages, idx);
-                const showSep = shouldShowSeparator(messages, idx);
+                const grouped = isGrouped(arr, idx);
+                const showSep = shouldShowSeparator(arr, idx);
                 const senderIsLeader = msg.sender?.role === 'leader' || msg.sender?._id === clubInfo?.leader?._id;
 
                 return (
