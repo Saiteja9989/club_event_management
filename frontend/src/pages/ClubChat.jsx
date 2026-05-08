@@ -6,7 +6,6 @@ import { useSocket } from '../context/SocketContext';
 import clubsApi from '../api/clubsApi';
 import DashboardLayout from '../components/layout/DashboardLayout';
 import { ArrowLeft, Pin, Send, ChevronDown, Users, Loader2, Crown, Smile, Paperclip, X, FileText, Download, ImageIcon } from 'lucide-react';
-import { useTranslation } from 'react-i18next';
 
 const QUICK_EMOJIS = ['👍', '❤️', '😂', '🎉', '🔥', '👏'];
 
@@ -105,7 +104,6 @@ export default function ClubChat() {
   const textareaRef = useRef(null);
   const emojiPickerRef = useRef(null);
 
-  const { t } = useTranslation();
   const myId = user?._id || user?.id;
   const isLeader = clubInfo?.leader?._id === myId || clubInfo?.leader?.toString() === myId;
 
@@ -421,8 +419,8 @@ export default function ClubChat() {
             ) : messages.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
                 <div className="text-5xl mb-4">💬</div>
-                <p className="font-medium text-lg">{t('chat.no_messages')}</p>
-                <p className="text-sm mt-1">{t('chat.start_conversation')}</p>
+                <p className="font-medium text-lg">No messages yet</p>
+                <p className="text-sm mt-1">Start the conversation!</p>
               </div>
             ) : (
               messages.filter(msg => msg && msg._id).map((msg, idx, arr) => {
@@ -468,7 +466,7 @@ export default function ClubChat() {
                         {!grouped && !isMine && (
                           <span className="text-xs text-muted-foreground font-semibold mb-1 ml-1">
                             {msg.sender?.name}
-                            {senderIsLeader && <span className="ml-1 text-amber-500">· {t('chat.leader')}</span>}
+                            {senderIsLeader && <span className="ml-1 text-amber-500">· Leader</span>}
                           </span>
                         )}
 
@@ -530,7 +528,7 @@ export default function ClubChat() {
                                 <button
                                   onClick={() => handlePin(msg._id)}
                                   className={`p-1 rounded hover:bg-muted transition-colors ml-1 ${msg.isPinned ? 'text-primary' : 'text-muted-foreground'}`}
-                                  title={msg.isPinned ? t('chat.unpin') : t('chat.pin_message')}
+                                  title={msg.isPinned ? 'Unpin' : 'Pin message'}
                                 >
                                   <Pin className="h-3.5 w-3.5" />
                                 </button>
@@ -582,7 +580,7 @@ export default function ClubChat() {
                 <div className="bg-card border border-border rounded-2xl rounded-bl-sm px-4 py-3">
                   <div className="flex items-center gap-1.5">
                     <span className="text-xs text-muted-foreground">
-                      {typingUsers.join(', ')} {typingUsers.length > 1 ? t('chat.typing_plural') : t('chat.typing')}
+                      {typingUsers.join(', ')} {typingUsers.length > 1 ? 'are typing' : 'is typing'}
                     </span>
                     <div className="flex gap-0.5">
                       <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground animate-bounce" style={{ animationDelay: '0ms' }} />
@@ -605,7 +603,7 @@ export default function ClubChat() {
                 className="flex items-center gap-2 bg-primary text-primary-foreground px-4 py-2 rounded-full shadow-lg text-sm font-medium hover:bg-primary/90 transition-all"
               >
                 <ChevronDown className="h-4 w-4" />
-                {newCount > 0 ? `${newCount} ${newCount > 1 ? t('chat.new_messages') : t('chat.new_message')}` : t('chat.scroll_bottom')}
+                {newCount > 0 ? `${newCount} ${newCount > 1 ? 'new messages' : 'new message'}` : 'Scroll to bottom'}
               </button>
             </div>
           )}
@@ -667,7 +665,7 @@ export default function ClubChat() {
               <button
                 onClick={() => fileInputRef.current?.click()}
                 className="p-2.5 rounded-xl hover:bg-muted transition-colors text-muted-foreground shrink-0"
-                title={t('chat.attach_file')}
+                title="Attach file"
               >
                 <Paperclip className="h-5 w-5" />
               </button>
@@ -676,7 +674,7 @@ export default function ClubChat() {
               <button
                 onClick={() => setShowEmojiPicker((v) => !v)}
                 className={`p-2.5 rounded-xl hover:bg-muted transition-colors shrink-0 ${showEmojiPicker ? 'text-primary bg-primary/10' : 'text-muted-foreground'}`}
-                title={t('chat.emoji')}
+                title="Emoji"
               >
                 <Smile className="h-5 w-5" />
               </button>
@@ -688,7 +686,7 @@ export default function ClubChat() {
                   value={input}
                   onChange={handleInputChange}
                   onKeyDown={handleKeyDown}
-                  placeholder={t('chat.type_message')}
+                  placeholder="Type a message… (Enter to send)"
                   rows={1}
                   className="w-full resize-none rounded-2xl border border-border bg-muted/40 px-4 py-3 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all max-h-32 overflow-y-auto"
                   style={{ minHeight: '44px' }}
@@ -718,7 +716,7 @@ export default function ClubChat() {
         {sidebarOpen && (
           <div className="w-60 shrink-0 border-l border-border bg-card flex flex-col overflow-hidden hidden md:flex">
             <div className="px-4 py-3 border-b border-border">
-              <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">{t('chat.members')}</h3>
+              <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Members</h3>
             </div>
 
             <div className="flex-1 overflow-y-auto px-3 py-3 space-y-1">
@@ -726,7 +724,7 @@ export default function ClubChat() {
               {onlineUsers.length > 0 && (
                 <>
                   <p className="text-[10px] font-bold uppercase tracking-wider text-emerald-500 px-1 mb-2">
-                    {t('chat.online')} — {onlineUsers.length}
+                    Online — {onlineUsers.length}
                   </p>
                   {allMembers
                     .filter((m) => onlineIds.has(m._id?.toString() || m._id))
@@ -739,7 +737,7 @@ export default function ClubChat() {
 
               {/* All members */}
               <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground px-1 mb-2">
-                {t('chat.all_members')} — {allMembers.length}
+                All Members — {allMembers.length}
               </p>
               {allMembers
                 .filter((m) => !onlineIds.has(m._id?.toString() || m._id))
@@ -755,7 +753,6 @@ export default function ClubChat() {
 }
 
 function MemberRow({ member, online, clubLeaderId }) {
-  const { t } = useTranslation();
   const isLeader = member.isLeader || member._id === clubLeaderId || member._id?.toString() === clubLeaderId?.toString();
   return (
     <div className="flex items-center gap-2.5 px-2 py-1.5 rounded-lg hover:bg-muted/60 transition-colors">
@@ -771,7 +768,7 @@ function MemberRow({ member, online, clubLeaderId }) {
         </p>
         {isLeader && (
           <p className="text-[10px] text-amber-500 font-medium flex items-center gap-0.5">
-            <Crown className="h-2.5 w-2.5" /> {t('chat.leader')}
+            <Crown className="h-2.5 w-2.5" /> Leader
           </p>
         )}
       </div>

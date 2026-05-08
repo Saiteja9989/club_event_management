@@ -1,1 +1,26 @@
 n8n_*.json
+
+# Claude Code internal files
+.claude/
+
+# Salesforce
+.sfdx/
+
+# Presentation and demo files
+*.pptx
+ClubHub_*.pdf
+
+# Demo and doc scripts
+DEMO_SCRIPT.md
+draw_architecture.py
+generate_*.py
+take_*.py
+
+# Generated docs and screenshots
+doc_screenshots/
+docs/
+
+# Node
+node_modules/
+dist/
+.env
